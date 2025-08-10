@@ -1,24 +1,32 @@
+// backend/controllers/studentController.js
+import { getStudentModel } from "../models/Student.js";
 
-
-import Student from "../models/Student.js";
-
-// Get all students
 export const getAllStudents = async (req, res) => {
-  const students = await Student.find();
-  res.json(students);
+  try {
+    const Student = getStudentModel(req.roleDb);
+    const list = await Student.find().lean();
+    res.json({ success: true, data: list });
+  } catch (e) {
+    console.error("getAllStudents error:", e);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
 };
 
-// Add or update a student
 export const addOrUpdateStudent = async (req, res) => {
-  const { rollNo, name, marks } = req.body;
-  let student = await Student.findOne({ rollNo });
-  if (student) {
-    student.name = name;
-    student.marks = marks;
-    await student.save();
-  } else {
-    student = new Student({ rollNo, name, marks });
-    await student.save();
+  try {
+    const Student = getStudentModel(req.roleDb);
+    const { rollNo, name, marks } = req.body;
+    if (!rollNo || !name) {
+      return res.status(400).json({ success: false, message: "rollNo and name are required" });
+    }
+    const doc = await Student.findOneAndUpdate(
+      { rollNo },
+      { $set: { name, marks } },
+      { new: true, upsert: true }
+    );
+    res.status(201).json({ success: true, data: doc });
+  } catch (e) {
+    console.error("addOrUpdateStudent error:", e);
+    res.status(500).json({ success: false, message: "Server error" });
   }
-  res.json(student);
 };

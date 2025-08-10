@@ -1,10 +1,11 @@
-import Student from "../models/Student.js";
+// backend/controllers/analyticsController.js
+import { getStudentModel } from "../models/Student.js";
 
 const ATTAINMENT_THRESHOLDS = [
   { min: 80, level: 3 },
   { min: 70, level: 2 },
   { min: 60, level: 1 },
-  { min: 0,  level: 0 }
+  { min: 0,  level: 0 },
 ];
 
 function getAttainmentLevel(percent) {
@@ -16,28 +17,37 @@ function getAttainmentLevel(percent) {
 
 export const calculateCOAnalytics = async (req, res) => {
   try {
-    // Accept dynamic coColumns array
-    const coColumns = req.body.coColumns || ["CO1","CO2","CO3","CO4","CO5","CO6","CO7","CO8"];
-    // You may want to accept target values and scores per CO from req.body in the future
-    const students = await Student.find({});
+    // Use the role-specific DB set by auth middleware
+    const Student = getStudentModel(req.roleDb);
+
+    // Accept dynamic CO list (defaults to CO1..CO8)
+    const coColumns =
+      req.body.coColumns ?? ["CO1", "CO2", "CO3", "CO4", "CO5", "CO6", "CO7", "CO8"];
+
+    const students = await Student.find().lean();
     const coDetails = [];
 
     for (const co of coColumns) {
-      const tv = 4; // or customize for each CO
-      const indirect3 = 2.5; // or customize per CO
+      const tv = 4;        // target value (customize per CO if needed)
+      const indirect3 = 2.5; // indirect score (customize per CO if needed)
 
-      // Filter out students with NA or missing marks
-      const validStudents = students.filter(s => s.marks[co] !== null && s.marks[co] !== undefined && s.marks[co] !== "NA" && s.marks[co] !== "");
-      const studentsNA = students.length - validStudents.length;
-      const studentsConsidered = validStudents.length;
-      const studentsAboveTV = validStudents.filter(s => Number(s.marks[co]) >= tv).length;
-      const percentAchievingTV = studentsConsidered > 0 ? (studentsAboveTV / studentsConsidered) * 100 : 0;
+      // Filter NA / empty
+      const valid = students.filter((s) => {
+        const v = s?.marks?.[co];
+        return v !== null && v !== undefined && v !== "" && v !== "NA";
+      });
+
+      const studentsNA = students.length - valid.length;
+      const studentsConsidered = valid.length;
+      const studentsAboveTV = valid.filter((s) => Number(s.marks[co]) >= tv).length;
+      const percentAchievingTV =
+        studentsConsidered > 0 ? (studentsAboveTV / studentsConsidered) * 100 : 0;
+
       const attainmentLevel = getAttainmentLevel(percentAchievingTV);
 
-      // Overall Score (0.8 * attainmentLevel + 0.2 * indirect3)
-      const overallScore = attainmentLevel && indirect3
-        ? (0.8 * attainmentLevel + 0.2 * indirect3).toFixed(2)
-        : 0;
+      // Overall Score = 0.8 * attainmentLevel + 0.2 * indirect3
+      const overallScore =
+        (0.8 * attainmentLevel + 0.2 * indirect3).toFixed(2);
 
       coDetails.push({
         co,
@@ -48,12 +58,13 @@ export const calculateCOAnalytics = async (req, res) => {
         percentAchievingTV: percentAchievingTV.toFixed(2),
         attainmentLevel,
         indirectScore3: indirect3,
-        overallScore
+        overallScore,
       });
     }
 
-    res.json({ coDetails });
+    res.json({ success: true, data: { coDetails } });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("calculateCOAnalytics error:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };

@@ -1,35 +1,43 @@
-import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
+// import jwt from "jsonwebtoken";
+// import User from "../models/User.js";
+// import { getRoleConn } from "../db/connections.js";
+
+// const auth = async (req, res, next) => {
+//   try {
+//     const token = req.header("Authorization")?.replace("Bearer ", "");
+//     if (!token) return res.status(401).json({ success:false, message:"No token" });
+
+//     const { id } = jwt.verify(token, process.env.JWT_SECRET);
+//     const user = await User.findById(id);
+//     if (!user) return res.status(401).json({ success:false, message:"Invalid token" });
+
+//     req.user = user;
+//     req.roleDb = getRoleConn(user.role); // ready if you later need role-specific data
+//     next();
+//   } catch (e) {
+//     res.status(401).json({ success:false, message:"Unauthorized" });
+//   }
+// };
+// export default auth;
+
+import jwt from "jsonwebtoken";
+import User from "../models/User.js";
+import { getRoleConn } from "../db/connections.js";
 
 const auth = async (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    const token = req.header("Authorization")?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ success:false, message:"No token" });
 
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'No token provided, authorization denied'
-      });
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select('-password');
-
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Token is not valid'
-      });
-    }
+    const { id } = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(id);
+    if (!user) return res.status(401).json({ success:false, message:"Invalid token" });
 
     req.user = user;
+    req.roleDb = getRoleConn(user.role);
     next();
-  } catch (error) {
-    console.error('Auth middleware error:', error);
-    res.status(401).json({
-      success: false,
-      message: 'Token is not valid'
-    });
+  } catch (e) {
+    res.status(401).json({ success:false, message:"Unauthorized" });
   }
 };
 
