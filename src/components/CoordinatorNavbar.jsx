@@ -18,19 +18,19 @@ export default function CoordinatorNavbar({ onLogout }) {
             href="#"
             className="hover:bg-green-100 px-3 py-2 rounded-md transition-colors duration-300"
           >
-            Subject
+            
           </a>
           <a
             href="#"
             className="hover:bg-green-100 px-3 py-2 rounded-md transition-colors duration-300"
           >
-            Faculty
+            
           </a>
           <a
             href="#"
             className="hover:bg-green-100 px-3 py-2 rounded-md transition-colors duration-300"
           >
-            Student
+            
           </a>
         </div>
 
