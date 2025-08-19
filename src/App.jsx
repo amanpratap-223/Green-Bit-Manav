@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 import Login from "./components/Login";
 import Register from "./components/Register";
 import CoordinatorLanding from "./pages/CoordinatorLanding";
@@ -7,16 +7,41 @@ import FacultyLanding from "./pages/FacultyLanding";
 import Sidebar from "./components/Sidebar";
 import SubjectDetail from "./components/SubjectDetail";
 
+// A layout component to keep the Sidebar and Navbar persistent
+const AppLayout = ({ handleLogout, subjects, handleShowAddSubject }) => (
+  <>
+    <Sidebar subjects={subjects} onAddSubject={handleShowAddSubject} />
+    <main className="ml-64"> {/* Offset content for the sidebar width */}
+      {/* Navbar restored to original design */}
+      <header className="bg-white shadow-sm border-b sticky top-0 z-40">
+        <div className="flex justify-between items-center px-8 py-4">
+          <a href="/" className="text-2xl font-bold text-blue-600 hover:text-blue-800">
+            Greenbit Solutions
+          </a>
+          <button
+            onClick={handleLogout}
+            className="bg-red-500 text-white font-semibold px-5 py-2 rounded-lg hover:bg-red-600 transition-colors duration-300"
+          >
+            Logout
+          </button>
+        </div>
+      </header>
+
+      {/* Main content area */}
+      <div className="p-8">
+        <Outlet />
+      </div>
+    </main>
+  </>
+);
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [showRegister, setShowRegister] = useState(false);
-
   const [subjects, setSubjects] = useState([]);
   const [showAddSubjectModal, setShowAddSubjectModal] = useState(false);
   const [subjectInputs, setSubjectInputs] = useState({ name: "", code: "", semester: "" });
-
-  const [selectedSubjectIndex, setSelectedSubjectIndex] = useState(null);
 
   useEffect(() => {
     const token = localStorage.getItem("authToken");
@@ -27,18 +52,56 @@ export default function App() {
     }
   }, []);
 
+  // Modal handlers
+  function handleShowAddSubject() {
+    setShowAddSubjectModal(true);
+  }
+
+  function handleAddSubject() {
+    if (!subjectInputs.name.trim() || !subjectInputs.code.trim() || !subjectInputs.semester.trim()) {
+      alert("All fields are required!");
+      return;
+    }
+    const newSubject = {
+      name: subjectInputs.name.trim(),
+      code: subjectInputs.code.trim(),
+      semester: subjectInputs.semester.trim(),
+      // ✨ EACH new subject now gets its own objectives and students list
+      courseObjectives: [],
+      students: [],
+    };
+    setSubjects((prev) => [...prev, newSubject]);
+    setShowAddSubjectModal(false);
+    setSubjectInputs({ name: "", code: "", semester: "" });
+  }
+
+  // ✨ NEW function to update a subject's data from a child component
+  function handleUpdateSubject(updatedSubject, index) {
+    const newSubjects = [...subjects];
+    newSubjects[index] = updatedSubject;
+    setSubjects(newSubjects);
+  }
+
+  function handleCancelAddSubject() {
+    setShowAddSubjectModal(false);
+  }
+
+  function handleSubjectInputChange(e) {
+    const { name, value } = e.target;
+    setSubjectInputs((prev) => ({ ...prev, [name]: value }));
+  }
+
+  // Authentication handlers
   const handleLogin = (userData) => {
     setIsAuthenticated(true);
     setUser(userData);
     setShowRegister(false);
   };
-
   const handleRegister = (userData) => {
     setIsAuthenticated(true);
     setUser(userData);
     setShowRegister(false);
   };
-
   const handleLogout = () => {
     localStorage.removeItem("authToken");
     localStorage.removeItem("user");
@@ -46,57 +109,21 @@ export default function App() {
     setUser(null);
     setShowRegister(false);
   };
-
   const switchToRegister = () => setShowRegister(true);
   const switchToLogin = () => setShowRegister(false);
 
-  // Modal handlers
-  function handleShowAddSubject() {
-    setShowAddSubjectModal(true);
-    setSubjectInputs({ name: "", code: "", semester: "" });
-  }
-  function handleAddSubject() {
-    if (!subjectInputs.name.trim() || !subjectInputs.code.trim() || !subjectInputs.semester.trim()) {
-      alert("All fields required!");
-      return;
-    }
-    setSubjects(prev => [
-      ...prev,
-      {
-        name: subjectInputs.name.trim(),
-        code: subjectInputs.code.trim(),
-        semester: subjectInputs.semester.trim(),
-      }
-    ]);
-    setShowAddSubjectModal(false);
-    setSubjectInputs({ name: "", code: "", semester: "" });
-  }
-  function handleCancelAddSubject() {
-    setShowAddSubjectModal(false);
-  }
-  function handleSubjectInputChange(e) {
-    const { name, value } = e.target;
-    setSubjectInputs(prev => ({ ...prev, [name]: value }));
-  }
-
-  // Show Register
-  if (!isAuthenticated && showRegister) {
-    return <Register onRegister={handleRegister} switchToLogin={switchToLogin} />;
-  }
-  // Show Login
+  // Show Register or Login if not authenticated
   if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} switchToRegister={switchToRegister} />;
+    return showRegister ? (
+      <Register onRegister={handleRegister} switchToLogin={switchToLogin} />
+    ) : (
+      <Login onLogin={handleLogin} switchToRegister={switchToRegister} />
+    );
   }
 
-  // Main content
+  // Main application
   return (
     <BrowserRouter>
-      <Sidebar
-        subjects={subjects}
-        onAddSubject={handleShowAddSubject}
-        selectedSubjectIndex={selectedSubjectIndex}
-        setSelectedSubjectIndex={setSelectedSubjectIndex}
-      />
       {/* Modal: Add Subject */}
       {showAddSubjectModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[999]">
@@ -109,9 +136,7 @@ export default function App() {
                 { label: "Semester", name: "semester" },
               ].map(({ label, name }) => (
                 <div key={name} className="flex flex-col">
-                  <label className="text-left font-semibold text-blue-700 mb-1">
-                    {label}
-                  </label>
+                  <label className="text-left font-semibold text-blue-700 mb-1">{label}</label>
                   <input
                     type="text"
                     name={name}
@@ -131,8 +156,7 @@ export default function App() {
             </button>
             <button
               onClick={handleCancelAddSubject}
-              className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 focus:outline-none"
-              aria-label="Close modal"
+              className="absolute top-3 right-3 text-gray-400 hover:text-gray-700"
               title="Close"
             >
               &#10005;
@@ -142,15 +166,39 @@ export default function App() {
       )}
 
       <Routes>
-        <Route path="/subject/:idx" element={
-          <SubjectDetail subjects={subjects} />
-        } />
-        {user?.role === "coordinator" && (
-          <Route path="/" element={<CoordinatorLanding user={user} onLogout={handleLogout} />} />
-        )}
-        {user?.role !== "coordinator" && (
-          <Route path="/" element={<FacultyLanding user={user} onLogout={handleLogout} />} />
-        )}
+        <Route
+          path="/subject/:idx"
+          element={
+            <>
+              <Sidebar subjects={subjects} onAddSubject={handleShowAddSubject} />
+              <SubjectDetail
+                subjects={subjects}
+                user={user}
+                onUpdateSubject={handleUpdateSubject} // ✨ Pass the update function as a prop
+              />
+            </>
+          }
+        />
+
+        <Route
+          path="/*"
+          element={
+            <AppLayout
+              handleLogout={handleLogout}
+              subjects={subjects}
+              handleShowAddSubject={handleShowAddSubject}
+            >
+              <Routes>
+                {user?.role === "coordinator" && (
+                  <Route path="/" element={<CoordinatorLanding subjects={subjects} />} />
+                )}
+                {user?.role !== "coordinator" && (
+                  <Route path="/" element={<FacultyLanding user={user} />} />
+                )}
+              </Routes>
+            </AppLayout>
+          }
+        />
       </Routes>
     </BrowserRouter>
   );
