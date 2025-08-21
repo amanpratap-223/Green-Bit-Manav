@@ -1,4 +1,5 @@
-import { Schema } from "mongoose";
+// models/Student.js
+import mongoose, { Schema } from "mongoose";
 
 const studentSchema = new Schema({
   rollNo: { type: String, required: true, unique: true },
@@ -15,4 +16,7 @@ const studentSchema = new Schema({
   }
 }, { timestamps: true });
 
-export const getStudentModel = (conn) => conn.model("Student", studentSchema);
+// Export the model directly
+const Student = mongoose.model("Student", studentSchema);
+
+export default Student;

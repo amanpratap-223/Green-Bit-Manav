@@ -1,5 +1,5 @@
-// backend/controllers/analyticsController.js
-import { getStudentModel } from "../models/Student.js";
+// controllers/analyticsController.js
+import Student from "../models/Student.js"; // Import model directly
 
 const ATTAINMENT_THRESHOLDS = [
   { min: 80, level: 3 },
@@ -17,10 +17,8 @@ function getAttainmentLevel(percent) {
 
 export const calculateCOAnalytics = async (req, res) => {
   try {
-    // Use the role-specific DB set by auth middleware
-    const Student = getStudentModel(req.roleDb);
+    // const Student = getStudentModel(req.roleDb); // No longer needed
 
-    // Accept dynamic CO list (defaults to CO1..CO8)
     const coColumns =
       req.body.coColumns ?? ["CO1", "CO2", "CO3", "CO4", "CO5", "CO6", "CO7", "CO8"];
 
@@ -28,10 +26,9 @@ export const calculateCOAnalytics = async (req, res) => {
     const coDetails = [];
 
     for (const co of coColumns) {
-      const tv = 4;        // target value (customize per CO if needed)
-      const indirect3 = 2.5; // indirect score (customize per CO if needed)
+      const tv = 4;
+      const indirect3 = 2.5;
 
-      // Filter NA / empty
       const valid = students.filter((s) => {
         const v = s?.marks?.[co];
         return v !== null && v !== undefined && v !== "" && v !== "NA";
@@ -44,8 +41,7 @@ export const calculateCOAnalytics = async (req, res) => {
         studentsConsidered > 0 ? (studentsAboveTV / studentsConsidered) * 100 : 0;
 
       const attainmentLevel = getAttainmentLevel(percentAchievingTV);
-
-      // Overall Score = 0.8 * attainmentLevel + 0.2 * indirect3
+      
       const overallScore =
         (0.8 * attainmentLevel + 0.2 * indirect3).toFixed(2);
 

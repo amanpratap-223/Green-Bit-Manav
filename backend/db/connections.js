@@ -1,22 +1,37 @@
-import dotenv from "dotenv";
+// // db/connections.js
+// import mongoose from "mongoose";
+// import dotenv from "dotenv";
+// dotenv.config();
+
+// const connectDB = async () => {
+//   try {
+//     const conn = await mongoose.connect(process.env.MONGO_URI);
+//     console.log(`[db] MongoDB Connected: ${conn.connection.host}`);
+//   } catch (error) {
+//     console.error(`[db] Connection Error: ${error.message}`);
+//     process.exit(1);
+//   }
+// };
+
+// export default connectDB;
+
+
+// backend/db/connections.js
 import mongoose from "mongoose";
-dotenv.config();
 
-const { MONGO_URI_AUTH, MONGO_URI_COORD, MONGO_URI_FAC } = process.env;
-
-function must(name, v){ if(!v) { console.error(`[db] Missing ${name}`); process.exit(1);} }
-must("MONGO_URI_AUTH", MONGO_URI_AUTH);
-must("MONGO_URI_COORD", MONGO_URI_COORD);
-must("MONGO_URI_FAC",   MONGO_URI_FAC);
-
-const authConn  = mongoose.createConnection(MONGO_URI_AUTH);
-const coordConn = mongoose.createConnection(MONGO_URI_COORD);
-const facConn   = mongoose.createConnection(MONGO_URI_FAC);
-
-for (const [n,c] of Object.entries({authConn,coordConn,facConn})) {
-  c.on("connected", () => console.log(`[db] ${n} connected`));
-  c.on("error", (e) => console.error(`[db] ${n} error:`, e.message));
+export default async function connectDB() {
+  const uri = process.env.MONGO_URI;
+  if (!uri) {
+    console.error("❌ MONGO_URI missing in .env");
+    process.exit(1);
+  }
+  try {
+    await mongoose.connect(uri, {
+      dbName: process.env.MONGO_DB || "greenbit",
+    });
+    console.log("✅ MongoDB connected");
+  } catch (err) {
+    console.error("❌ MongoDB connection error:", err.message);
+    process.exit(1);
+  }
 }
-
-export const getAuthConn  = () => authConn;
-export const getRoleConn  = (role) => (role === "coordinator" ? coordConn : facConn);

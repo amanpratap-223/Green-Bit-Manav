@@ -1,9 +1,9 @@
-// backend/controllers/studentController.js
-import { getStudentModel } from "../models/Student.js";
+// controllers/studentController.js
+import Student from "../models/Student.js"; // Import model directly
 
 export const getAllStudents = async (req, res) => {
   try {
-    const Student = getStudentModel(req.roleDb);
+    // const Student = getStudentModel(req.roleDb); // No longer needed
     const list = await Student.find().lean();
     res.json({ success: true, data: list });
   } catch (e) {
@@ -14,7 +14,7 @@ export const getAllStudents = async (req, res) => {
 
 export const addOrUpdateStudent = async (req, res) => {
   try {
-    const Student = getStudentModel(req.roleDb);
+    // const Student = getStudentModel(req.roleDb); // No longer needed
     const { rollNo, name, marks } = req.body;
     if (!rollNo || !name) {
       return res.status(400).json({ success: false, message: "rollNo and name are required" });
