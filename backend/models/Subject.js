@@ -1,27 +1,44 @@
+// backend/models/Subject.js
 import mongoose from "mongoose";
 
-const subjectSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  code: { type: String, required: true, unique: true },
-  semester: { type: String, required: true },
-  courseObjectives: [{ type: String }],
-  totalStudents: { type: Number, default: 0 },
-  coordinator: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User',
-    required: true 
+const componentSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true }, // e.g., MST, EST, Viva
+    maxMarks: { type: Number, required: true, min: 0 },
+    enabled: { type: Boolean, default: true },
   },
-  facultyAssignments: [{
-    faculty: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    subgroup: { type: String }
-  }],
-  weightage: {
-    MST: { type: Number, default: 0 },
-    EST: { type: Number, default: 0 },
-    Sessional: { type: Number, default: 0 },
-    Lab: { type: Number, default: 0 }
+  { _id: false }
+);
+
+const subjectSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    code: { type: String, required: true, unique: true },
+    semester: { type: String, required: true },
+    courseObjectives: [{ type: String }],
+    courseOutcomes: [{ type: String }],
+
+    totalStudents: { type: Number, default: 0 },
+    coordinator: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    facultyAssignments: [
+      {
+        faculty: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        subgroup: { type: String },
+      },
+    ],
+
+    // NEW: dynamic assessment components
+    components: {
+      type: [componentSchema],
+      default: [], // starts empty; UI can add MST/EST/etc.
+    },
   },
-  courseOutcomes: [{ type: String }]
-}, { timestamps: true });
+  { timestamps: true }
+);
 
 export default mongoose.model("Subject", subjectSchema);
