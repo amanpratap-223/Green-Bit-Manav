@@ -1,6 +1,3 @@
-
-
-// src/components/SubjectDetail.jsx
 import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
@@ -9,61 +6,117 @@ export default function SubjectDetail({ subjects, user, onUpdateSubject }) {
   const { idx } = useParams();
   const navigate = useNavigate();
   const subject = subjects[idx];
-
   const [newObjective, setNewObjective] = useState("");
 
   if (!subject) {
     return <div className="p-6 text-center text-red-500">Subject not found.</div>;
   }
 
-  const handleAddObjective = () => {
+  const handleAddObjective = async () => {
     if (!newObjective.trim()) return;
-    const newObjectives = [...(subject.courseObjectives || []), newObjective.trim()];
-    const updatedSubject = { ...subject, courseObjectives: newObjectives };
-    onUpdateSubject(updatedSubject, idx);
-    setNewObjective("");
+
+    try {
+      const token = localStorage.getItem("authToken");
+      const response = await fetch(`http://localhost:5000/api/subjects/${subject._id}/objectives`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ objective: newObjective.trim() })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        const updatedSubject = { ...subject, courseObjectives: data.data.courseObjectives };
+        onUpdateSubject(updatedSubject, idx);
+        setNewObjective("");
+      } else {
+        alert("Error saving objective: " + data.message);
+      }
+    } catch (error) {
+      console.error("Error saving objective:", error);
+      alert("Error saving objective");
+    }
   };
 
-  // ✅ Template now includes MST, EST, Sessional, Lab
   const handleDownloadTemplate = () => {
     const worksheet = XLSX.utils.json_to_sheet([
       {
-        "Roll No.": "",
-        Name: "",
-        Subgroup: "",
-        Branch: "",
-        MST: "",         // Mid-sem test
-        EST: "",         // End-sem test
-        Sessional: "",   // Internal/continuous
-        Lab: "",         // Lab marks
+        "Roll No.": "102315044",
+        Name: "Sample Name",
+        Subgroup: "3021",
+        Branch: "ENC",
+        MST: "22",
+        EST: "25",
+        Sessional: "10",
+        Lab: "15",
       },
     ]);
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, worksheet, "StudentsTemplate");
     XLSX.writeFile(wb, `${subject.code}_StudentsTemplate.xlsx`);
   };
 
-  // ✅ Parse Excel and redirect to report page
   const handleUploadStudents = (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const data = new Uint8Array(e.target.result);
-      const wb = XLSX.read(data, { type: "array" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const jsonData = XLSX.utils.sheet_to_json(ws, { defval: "" });
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames];
+        const jsonData = XLSX.utils.sheet_to_json(ws, { defval: "" });
 
-      const updatedSubject = {
-        ...subject,
-        students: jsonData, // keep as-is so column headers remain usable
-      };
-      onUpdateSubject(updatedSubject, idx);
+        console.log("Parsed Excel data:", jsonData); // Debug log
 
-      // ➜ Go to the report page
-      navigate(`/subject/${idx}/report`);
+        if (jsonData.length === 0) {
+          alert("The Excel file appears to be empty.");
+          return;
+        }
+
+        // Upload to backend
+        const token = localStorage.getItem("authToken");
+        const response = await fetch("http://localhost:5000/api/students/upload", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            subjectId: subject._id,
+            students: jsonData
+          })
+        });
+
+        const result = await response.json();
+        console.log("Backend response:", result); // Debug log
+
+        if (result.success) {
+          alert(`Successfully uploaded ${result.data.studentsUploaded} students!`);
+          
+          // Update local subject state with the uploaded count
+          const updatedSubject = { 
+            ...subject, 
+            totalStudents: result.data.studentsUploaded,
+            students: jsonData // Keep local copy for immediate display
+          };
+          onUpdateSubject(updatedSubject, idx);
+          
+          // Navigate to report page
+          navigate(`/subject/${idx}/report`);
+        } else {
+          alert("Error uploading students: " + result.message);
+        }
+      } catch (error) {
+        console.error("Error processing Excel file:", error);
+        alert("Error processing Excel file: " + error.message);
+      }
     };
+
     reader.readAsArrayBuffer(file);
   };
 
@@ -126,18 +179,17 @@ export default function SubjectDetail({ subjects, user, onUpdateSubject }) {
               </label>
             </div>
           )}
-
-          {(subject.students || []).length > 0 && (
-            <div className="text-sm text-gray-600">
-              <p>Uploaded: {(subject.students || []).length} rows.</p>
+          <div className="text-sm text-gray-600">
+            <p>Total Students: <span className="font-semibold">{subject.totalStudents || 0}</span></p>
+            {subject.totalStudents > 0 && (
               <button
                 onClick={() => navigate(`/subject/${idx}/report`)}
                 className="mt-3 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
               >
                 View Report
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>

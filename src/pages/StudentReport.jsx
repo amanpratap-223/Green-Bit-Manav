@@ -1,31 +1,22 @@
-
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 
 const FILTERS = ["All", "MST", "EST", "Sessional", "Lab"];
 
-// Pretend existing faculty directory (you can swap with backend later)
-const DEFAULT_FACULTY = [
-  "Dr. A. Sharma",
-  "Prof. B. Gupta",
-  "Dr. C. Verma",
-  "Ms. D. Kaur",
-];
-
 export default function StudentReport({ subjects }) {
   const { idx } = useParams();
   const navigate = useNavigate();
-  const subject = subjects[idx];
-
+  
+  // All hooks at the top level
   const [activeFilter, setActiveFilter] = useState("All");
-
-  // ------- NEW local state for the three extra cards -------
+  const [studentsData, setStudentsData] = useState([]);
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [showFacultyPicker, setShowFacultyPicker] = useState(false);
-  const [facultyList] = useState(DEFAULT_FACULTY); // source of truth for the picker
+  const [facultyList, setFacultyList] = useState([]); // Now from backend
   const [pendingFaculty, setPendingFaculty] = useState("");
   const [pendingSubgroup, setPendingSubgroup] = useState("");
-  const [assignments, setAssignments] = useState([]); // [{name, subgroup}]
-
+  const [assignments, setAssignments] = useState([]); // Now from backend
   const [weightage, setWeightage] = useState({
     MST: "",
     EST: "",
@@ -33,18 +24,131 @@ export default function StudentReport({ subjects }) {
     Lab: "",
   });
   const [savedWeightage, setSavedWeightage] = useState(null);
-
   const [newCO, setNewCO] = useState("");
   const [courseOutcomes, setCourseOutcomes] = useState([]);
 
-  // --------------------------------------------------------
+  const subject = subjects && subjects[idx] ? subjects[idx] : null;
 
-  const rows = useMemo(() => subject?.students || [], [subject]);
-  if (!subject) {
-    return <div className="p-6 text-center text-red-500">Subject not found.</div>;
-  }
+  // Load data from backend
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const token = localStorage.getItem("authToken");
+        
+        if (!subject?._id) {
+          if (subject?.students && subject.students.length > 0) {
+            setStudentsData(subject.students);
+            const totalStudents = subject.students.length;
+            const subgroups = [...new Set(subject.students.map(s => s.Subgroup).filter(Boolean))];
+            const branches = [...new Set(subject.students.map(s => s.Branch).filter(Boolean))];
+            
+            setAnalyticsData({
+              totalStudents,
+              subgroupCount: subgroups.length,
+              branchCount: branches.length,
+              subgroups,
+              branches
+            });
+          }
+          setIsLoadingData(false);
+          return;
+        }
+        
+        console.log("Loading data for subject ID:", subject._id);
 
-  // unique subgroups derived from Excel
+        // Load faculty list
+        const facultyResponse = await fetch("http://localhost:5000/api/subjects/faculty-list", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const facultyResult = await facultyResponse.json();
+        if (facultyResult.success) {
+          console.log("Faculty list loaded:", facultyResult.data);
+          setFacultyList(facultyResult.data);
+        }
+
+        // Load existing faculty assignments
+        const assignmentsResponse = await fetch(`http://localhost:5000/api/subjects/${subject._id}/faculty-assignments`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const assignmentsResult = await assignmentsResponse.json();
+        if (assignmentsResult.success) {
+          console.log("Assignments loaded:", assignmentsResult.data);
+          setAssignments(assignmentsResult.data);
+        }
+
+        // Load students
+        const studentsResponse = await fetch(`http://localhost:5000/api/students/subject/${subject._id}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const studentsResult = await studentsResponse.json();
+        
+        // Load analytics
+        const analyticsResponse = await fetch(`http://localhost:5000/api/students/analytics/${subject._id}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const analyticsResult = await analyticsResponse.json();
+
+        if (studentsResult.success && studentsResult.data) {
+          const transformedData = studentsResult.data.map(student => ({
+            "Roll No.": student.rollNo,
+            "Name": student.name,
+            "Subgroup": student.subgroup,
+            "Branch": student.branch,
+            "MST": student.marks?.MST || "",
+            "EST": student.marks?.EST || "",
+            "Sessional": student.marks?.Sessional || "",
+            "Lab": student.marks?.Lab || ""
+          }));
+          setStudentsData(transformedData);
+        } else if (subject?.students && subject.students.length > 0) {
+          setStudentsData(subject.students);
+        }
+
+        if (analyticsResult.success && analyticsResult.data) {
+          setAnalyticsData(analyticsResult.data);
+        } else {
+          const currentData = studentsResult.success ? studentsData : (subject?.students || []);
+          if (currentData.length > 0) {
+            const totalStudents = currentData.length;
+            const subgroups = [...new Set(currentData.map(s => s.Subgroup || s.subgroup).filter(Boolean))];
+            const branches = [...new Set(currentData.map(s => s.Branch || s.branch).filter(Boolean))];
+            
+            setAnalyticsData({
+              totalStudents,
+              subgroupCount: subgroups.length,
+              branchCount: branches.length,
+              subgroups,
+              branches
+            });
+          }
+        }
+
+      } catch (error) {
+        console.error("Error loading data:", error);
+        if (subject?.students && subject.students.length > 0) {
+          setStudentsData(subject.students);
+          const totalStudents = subject.students.length;
+          const subgroups = [...new Set(subject.students.map(s => s.Subgroup).filter(Boolean))];
+          const branches = [...new Set(subject.students.map(s => s.Branch).filter(Boolean))];
+          
+          setAnalyticsData({
+            totalStudents,
+            subgroupCount: subgroups.length,
+            branchCount: branches.length,
+            subgroups,
+            branches
+          });
+        }
+      } finally {
+        setIsLoadingData(false);
+      }
+    };
+
+    loadData();
+  }, [subject, idx]);
+
+  const rows = useMemo(() => studentsData || [], [studentsData]);
+
   const subgroupOptions = useMemo(
     () =>
       Array.from(
@@ -53,32 +157,52 @@ export default function StudentReport({ subjects }) {
     [rows]
   );
 
-  // Decide which assessment columns to show
   const showAll = activeFilter === "All";
   const showMST = showAll || activeFilter === "MST";
   const showEST = showAll || activeFilter === "EST";
   const showSessional = showAll || activeFilter === "Sessional";
   const showLab = showAll || activeFilter === "Lab";
 
-  // ------- NEW handlers -------
-  function handleAddAssignment() {
+  // Updated faculty assignment handler - now saves to backend
+  const handleAddAssignment = async () => {
     if (!pendingFaculty || !pendingSubgroup) return;
-    const exists = assignments.some(
-      (a) => a.name === pendingFaculty && a.subgroup === pendingSubgroup
-    );
-    if (!exists) {
-      setAssignments((prev) => [
-        ...prev,
-        { name: pendingFaculty, subgroup: pendingSubgroup },
-      ]);
+
+    try {
+      const token = localStorage.getItem("authToken");
+      console.log("Assigning faculty:", pendingFaculty, "to subgroup:", pendingSubgroup);
+      
+      const response = await fetch(`http://localhost:5000/api/subjects/${subject._id}/assign-faculty`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          facultyId: pendingFaculty,
+          subgroup: pendingSubgroup
+        })
+      });
+
+      const result = await response.json();
+      console.log("Assignment result:", result);
+
+      if (result.success) {
+        // Update local state with new assignments
+        setAssignments(result.data.facultyAssignments);
+        setPendingFaculty("");
+        setPendingSubgroup("");
+        setShowFacultyPicker(false);
+        alert("Faculty assigned successfully!");
+      } else {
+        alert("Error assigning faculty: " + result.message);
+      }
+    } catch (error) {
+      console.error("Error assigning faculty:", error);
+      alert("Error assigning faculty");
     }
-    setPendingFaculty("");
-    setPendingSubgroup("");
-    setShowFacultyPicker(false);
-  }
+  };
 
   function handleSaveWeightage() {
-    // Basic validation
     const w = {
       MST: Number(weightage.MST || 0),
       EST: Number(weightage.EST || 0),
@@ -93,7 +217,22 @@ export default function StudentReport({ subjects }) {
     setCourseOutcomes((prev) => [...prev, newCO.trim()]);
     setNewCO("");
   }
-  // ----------------------------
+
+  if (!subject) {
+    return <div className="p-6 text-center text-red-500">Subject not found.</div>;
+  }
+
+  if (isLoadingData) {
+    return (
+      <div className="pl-72 pt-8 pr-8 pb-10">
+        <div className="bg-white rounded-lg shadow-lg p-8">
+          <div className="flex justify-center items-center min-h-[200px]">
+            <span>Loading data...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="pl-72 pt-8 pr-8 pb-10">
@@ -118,25 +257,29 @@ export default function StudentReport({ subjects }) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
           <div className="p-5 bg-white border rounded shadow-sm">
             <p className="text-sm text-gray-500">TOTAL STUDENTS</p>
-            <p className="text-3xl font-semibold mt-2">{rows.length || 0}</p>
+            <p className="text-3xl font-semibold mt-2">
+              {analyticsData?.totalStudents || rows.length || 0}
+            </p>
           </div>
           <div className="p-5 bg-white border rounded shadow-sm">
             <p className="text-sm text-gray-500">SUBGROUPS</p>
             <p className="text-3xl font-semibold mt-2">
-              {new Set(rows.map((r) => String(r.Subgroup || "").trim())).size || 0}
+              {analyticsData?.subgroupCount || 
+               new Set(rows.map((r) => String(r.Subgroup || "").trim()).filter(Boolean)).size || 0}
             </p>
           </div>
           <div className="p-5 bg-white border rounded shadow-sm">
             <p className="text-sm text-gray-500">BRANCHES</p>
             <p className="text-3xl font-semibold mt-2">
-              {new Set(rows.map((r) => String(r.Branch || "").trim())).size || 0}
+              {analyticsData?.branchCount || 
+               new Set(rows.map((r) => String(r.Branch || "").trim()).filter(Boolean)).size || 0}
             </p>
           </div>
         </div>
 
-        {/* ===== NEW: Three extra cards ===== */}
+        {/* Three extra cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {/* Card 1: Assign Faculty */}
+          {/* Card 1: Assign Faculty - Updated with backend integration */}
           <div className="p-5 bg-white border rounded shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-gray-800">Assign Faculty</h3>
@@ -147,7 +290,6 @@ export default function StudentReport({ subjects }) {
                 Add Faculty
               </button>
             </div>
-
             {showFacultyPicker && (
               <div className="mb-4 p-3 bg-blue-50 rounded">
                 <div className="mb-2">
@@ -161,8 +303,8 @@ export default function StudentReport({ subjects }) {
                   >
                     <option value="">-- Select --</option>
                     {facultyList.map((f) => (
-                      <option key={f} value={f}>
-                        {f}
+                      <option key={f._id} value={f._id}>
+                        {f.name} ({f.email})
                       </option>
                     ))}
                   </select>
@@ -204,7 +346,6 @@ export default function StudentReport({ subjects }) {
                 </div>
               </div>
             )}
-
             <div>
               <p className="text-sm text-gray-500 mb-2">Assigned:</p>
               {assignments.length === 0 ? (
@@ -213,10 +354,10 @@ export default function StudentReport({ subjects }) {
                 <ul className="space-y-1">
                   {assignments.map((a, i) => (
                     <li
-                      key={`${a.name}-${a.subgroup}-${i}`}
+                      key={`${a.faculty._id}-${a.subgroup}-${i}`}
                       className="text-sm bg-gray-50 border rounded px-2 py-1"
                     >
-                      <span className="font-medium">{a.name}</span>{" "}
+                      <span className="font-medium">{a.faculty.name}</span>{" "}
                       <span className="text-gray-500">→ Subgroup</span>{" "}
                       <span className="font-medium">{a.subgroup}</span>
                     </li>
@@ -252,7 +393,6 @@ export default function StudentReport({ subjects }) {
             >
               Save
             </button>
-
             {savedWeightage && (
               <div className="mt-3 text-sm bg-gray-50 border rounded p-3">
                 <p className="font-medium mb-1">Current Weightage</p>
@@ -297,7 +437,6 @@ export default function StudentReport({ subjects }) {
             )}
           </div>
         </div>
-        {/* ===== End new cards ===== */}
 
         {/* Filter bar */}
         <div className="bg-blue-600 text-white rounded-t-lg px-6 py-4 flex items-center justify-between">
@@ -333,7 +472,6 @@ export default function StudentReport({ subjects }) {
               Roll No., Name, Subgroup, Branch, MST, EST, Sessional, Lab
             </span>
           </div>
-
           <div className="overflow-x-auto">
             <table className="w-full border-t border-gray-300 text-sm">
               <thead>
@@ -351,14 +489,14 @@ export default function StudentReport({ subjects }) {
               <tbody>
                 {rows.map((s, i) => (
                   <tr key={i} className="hover:bg-gray-50">
-                    <td className="p-2 border">{s["Roll No."]}</td>
-                    <td className="p-2 border">{s["Name"]}</td>
-                    <td className="p-2 border">{s["Subgroup"]}</td>
-                    <td className="p-2 border">{s["Branch"]}</td>
-                    {showMST && <td className="p-2 border">{s["MST"]}</td>}
-                    {showEST && <td className="p-2 border">{s["EST"]}</td>}
-                    {showSessional && <td className="p-2 border">{s["Sessional"]}</td>}
-                    {showLab && <td className="p-2 border">{s["Lab"]}</td>}
+                    <td className="p-2 border">{s["Roll No."] || ""}</td>
+                    <td className="p-2 border">{s["Name"] || ""}</td>
+                    <td className="p-2 border">{s["Subgroup"] || ""}</td>
+                    <td className="p-2 border">{s["Branch"] || ""}</td>
+                    {showMST && <td className="p-2 border">{s["MST"] || ""}</td>}
+                    {showEST && <td className="p-2 border">{s["EST"] || ""}</td>}
+                    {showSessional && <td className="p-2 border">{s["Sessional"] || ""}</td>}
+                    {showLab && <td className="p-2 border">{s["Lab"] || ""}</td>}
                   </tr>
                 ))}
                 {rows.length === 0 && (
@@ -375,7 +513,6 @@ export default function StudentReport({ subjects }) {
             </table>
           </div>
         </div>
-        {/* /Table */}
       </div>
     </div>
   );

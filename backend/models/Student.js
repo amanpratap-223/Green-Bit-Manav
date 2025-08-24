@@ -1,22 +1,24 @@
-// models/Student.js
-import mongoose, { Schema } from "mongoose";
+import mongoose from "mongoose";
 
-const studentSchema = new Schema({
-  rollNo: { type: String, required: true, unique: true },
-  name:   { type: String, required: true },
+const studentSchema = new mongoose.Schema({
+  rollNo: { type: String, required: true },
+  name: { type: String, required: true },
+  subgroup: { type: String },
+  branch: { type: String },
+  subject: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Subject',
+    required: true 
+  },
   marks: {
-    CO1: { type: Schema.Types.Mixed, default: null },
-    CO2: { type: Schema.Types.Mixed, default: null },
-    CO3: { type: Schema.Types.Mixed, default: null },
-    CO4: { type: Schema.Types.Mixed, default: null },
-    CO5: { type: Schema.Types.Mixed, default: null },
-    CO6: { type: Schema.Types.Mixed, default: null },
-    CO7: { type: Schema.Types.Mixed, default: null },
-    CO8: { type: Schema.Types.Mixed, default: null }
+    MST: { type: Number, default: null },
+    EST: { type: Number, default: null },
+    Sessional: { type: Number, default: null },
+    Lab: { type: Number, default: null }
   }
 }, { timestamps: true });
 
-// Export the model directly
-const Student = mongoose.model("Student", studentSchema);
+// Compound unique index to prevent duplicate students per subject
+studentSchema.index({ rollNo: 1, subject: 1 }, { unique: true });
 
-export default Student;
+export default mongoose.model("Student", studentSchema);

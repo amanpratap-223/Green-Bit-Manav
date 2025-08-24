@@ -1,53 +1,53 @@
-// // middleware/auth.js
-// import jwt from "jsonwebtoken";
-// import User from "../models/User.js";
-
-// const auth = async (req, res, next) => {
-//   try {
-//     const token = req.header("Authorization")?.replace("Bearer ", "");
-//     if (!token) {
-//         return res.status(401).json({ success:false, message:"No token, authorization denied" });
-//     }
-
-//     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-//     const user = await User.findById(decoded.id).select("-password");
-//     if (!user) {
-//         return res.status(401).json({ success:false, message:"Invalid token" });
-//     }
-
-//     req.user = user;
-//     // req.roleDb is no longer needed as we have one shared DB connection
-//     next();
-//   } catch (e) {
-//     res.status(401).json({ success:false, message:"Token is not valid" });
-//   }
-// };
-
-// export default auth;
-
-// backend/middleware/auth.js
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
 const auth = async (req, res, next) => {
   try {
-    const token = req.header("Authorization")?.replace("Bearer ", "");
+    const authHeader = req.header("Authorization");
+    
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res
+        .status(401)
+        .json({ success: false, message: "No token, authorization denied" });
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    
     if (!token) {
       return res
         .status(401)
         .json({ success: false, message: "No token, authorization denied" });
     }
 
+    // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id); // password is hidden by default
+    
+    // Get user from database
+    const user = await User.findById(decoded.id);
+    
     if (!user) {
-      return res.status(401).json({ success: false, message: "Invalid token" });
+      return res.status(401).json({ success: false, message: "Invalid token - user not found" });
     }
 
-    req.user = user;
+    req.user = {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role
+    };
+    
     next();
-  } catch (e) {
-    console.error("Auth error:", e.message);
+  } catch (error) {
+    console.error("Auth error:", error.message);
+    
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ success: false, message: "Invalid token" });
+    }
+    
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ success: false, message: "Token expired" });
+    }
+    
     res.status(401).json({ success: false, message: "Token is not valid" });
   }
 };
