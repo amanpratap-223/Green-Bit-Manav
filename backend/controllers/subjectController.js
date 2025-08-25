@@ -1,85 +1,70 @@
-// backend/controllers/subjectController.js
 import Subject from "../models/Subject.js";
 import User from "../models/User.js";
 
-/** Create subject */
+/** CREATE */
 export const createSubject = async (req, res) => {
   try {
     const { name, code, semester } = req.body;
     if (!name || !code || !semester) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Name, code, and semester are required" });
+      return res.status(400).json({ success: false, message: "Name, code and semester are required" });
     }
-
     const subject = new Subject({
       name: name.trim(),
       code: code.trim(),
       semester: semester.trim(),
       coordinator: req.user.id,
-      components: [], // start empty; UI can add
+      components: [],
     });
-
     const saved = await subject.save();
     res.status(201).json({ success: true, data: saved });
-  } catch (err) {
-    if (err.code === 11000) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Subject code already exists" });
+  } catch (e) {
+    if (e.code === 11000) {
+      return res.status(400).json({ success: false, message: "Subject code already exists" });
     }
-    console.error("Create subject error:", err);
+    console.error("createSubject:", e);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-/** List subjects for current user (coordinator or assigned faculty) */
+/** LIST for current user */
 export const getSubjects = async (req, res) => {
   try {
-    let query = {};
-    if (req.user.role === "faculty") {
-      query["facultyAssignments.faculty"] = req.user.id;
-    } else if (req.user.role === "coordinator") {
-      query.coordinator = req.user.id;
-    }
+    const q = {};
+    if (req.user.role === "faculty") q["facultyAssignments.faculty"] = req.user.id;
+    if (req.user.role === "coordinator") q.coordinator = req.user.id;
 
-    const subjects = await Subject.find(query)
+    const subjects = await Subject.find(q)
       .populate("coordinator", "name email")
       .populate("facultyAssignments.faculty", "name email");
 
     res.json({ success: true, data: subjects });
-  } catch (err) {
-    console.error("Get subjects error:", err);
+  } catch (e) {
+    console.error("getSubjects:", e);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-/** Generic update (coordinator only) */
+/** UPDATE (coordinator) */
 export const updateSubject = async (req, res) => {
   try {
     const { id } = req.params;
     const subject = await Subject.findOne({ _id: id, coordinator: req.user.id });
-    if (!subject) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Subject not found or unauthorized" });
-    }
+    if (!subject) return res.status(404).json({ success: false, message: "Subject not found or unauthorized" });
 
     Object.assign(subject, req.body);
-    const updated = await subject.save();
-    res.json({ success: true, data: updated });
-  } catch (err) {
-    console.error("Update subject error:", err);
+    const saved = await subject.save();
+    res.json({ success: true, data: saved });
+  } catch (e) {
+    console.error("updateSubject:", e);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-/** --- Course Objectives --- */
+/** COURSE OBJECTIVES */
 export const addCourseObjective = async (req, res) => {
   try {
     const { id } = req.params;
     const { objective } = req.body;
-
     if (!objective?.trim()) {
       return res.status(400).json({ success: false, message: "Objective is required" });
     }
@@ -89,127 +74,111 @@ export const addCourseObjective = async (req, res) => {
       { $push: { courseObjectives: objective.trim() } },
       { new: true }
     );
-
-    if (!subject) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Subject not found or unauthorized" });
-    }
-
+    if (!subject) return res.status(404).json({ success: false, message: "Subject not found or unauthorized" });
     res.json({ success: true, data: subject });
-  } catch (err) {
-    console.error("Add course objective error:", err);
+  } catch (e) {
+    console.error("addCourseObjective:", e);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-/** --- Dynamic Components (MST/EST/etc.) --- */
-// Upsert (add or update) a component by name
-export const upsertComponent = async (req, res) => {
+/** COMPONENTS */
+export const getComponents = async (req, res) => {
   try {
     const { id } = req.params;
-    let { name, maxMarks, enabled = true } = req.body;
+    const subject = await Subject.findOne({
+      _id: id,
+      $or: [{ coordinator: req.user.id }, { "facultyAssignments.faculty": req.user.id }],
+    });
+    if (!subject) return res.status(404).json({ success: false, message: "Subject not found or unauthorized" });
+    res.json({ success: true, data: subject.components || [] });
+  } catch (e) {
+    console.error("getComponents:", e);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
 
-    name = String(name || "").trim();
-    maxMarks = Number(maxMarks);
-
-    if (!name || Number.isNaN(maxMarks) || maxMarks < 0) {
-      return res.status(400).json({
-        success: false,
-        message: "name and non-negative maxMarks are required",
-      });
-    }
-
+/**
+ * Save components. Accepts either:
+ * 1) { components: [ {name,maxMarks,enabled}, ... ] }  ← full replace (used by your UI)
+ * 2) { name, maxMarks, enabled? }                      ← single upsert (optional)
+ */
+export const saveComponents = async (req, res) => {
+  try {
+    const { id } = req.params;
     const subject = await Subject.findOne({ _id: id, coordinator: req.user.id });
-    if (!subject) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Subject not found or unauthorized" });
-    }
+    if (!subject) return res.status(404).json({ success: false, message: "Subject not found or unauthorized" });
 
-    const idx = (subject.components || []).findIndex(
-      (c) => c.name.toLowerCase() === name.toLowerCase()
-    );
+    const { components, name, maxMarks, enabled } = req.body;
 
-    if (idx >= 0) {
-      subject.components[idx].maxMarks = maxMarks;
-      subject.components[idx].enabled = enabled;
+    let next = [];
+
+    if (Array.isArray(components)) {
+      next = components.map((c) => ({
+        name: String(c.name || "").trim(),
+        maxMarks: Math.max(0, Number(c.maxMarks) || 0),
+        enabled: !!c.enabled,
+      }));
+    } else if (name !== undefined && maxMarks !== undefined) {
+      const nm = String(name || "").trim();
+      const mm = Number(maxMarks);
+      if (!nm || Number.isNaN(mm) || mm < 0) {
+        return res.status(400).json({ success: false, message: "Invalid name/maxMarks" });
+      }
+      const list = subject.components || [];
+      const idx = list.findIndex((x) => x.name.toLowerCase() === nm.toLowerCase());
+      if (idx >= 0) {
+        list[idx] = { ...list[idx], name: nm, maxMarks: mm, enabled: enabled ?? list[idx].enabled };
+      } else {
+        list.push({ name: nm, maxMarks: mm, enabled: enabled ?? true });
+      }
+      next = list;
     } else {
-      subject.components.push({ name, maxMarks, enabled });
-    }
-
-    const saved = await subject.save();
-    res.json({ success: true, data: saved.components });
-  } catch (err) {
-    console.error("Upsert component error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-// Remove a component by name
-export const removeComponent = async (req, res) => {
-  try {
-    const { id, name } = req.params;
-
-    const subject = await Subject.findOne({ _id: id, coordinator: req.user.id });
-    if (!subject) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Subject not found or unauthorized" });
-    }
-
-    subject.components = (subject.components || []).filter(
-      (c) => c.name.toLowerCase() !== String(name || "").toLowerCase()
-    );
-
-    const saved = await subject.save();
-    res.json({ success: true, data: saved.components });
-  } catch (err) {
-    console.error("Remove component error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-/** --- Faculty assignment helpers (unchanged) --- */
-export const assignFacultyToSubject = async (req, res) => {
-  try {
-    const { id } = req.params; // subject id
-    const { facultyId, subgroup } = req.body;
-
-    if (!facultyId || !subgroup) {
       return res
         .status(400)
-        .json({ success: false, message: "Faculty ID and subgroup are required" });
+        .json({ success: false, message: "Provide components array OR single name/maxMarks" });
+    }
+
+    subject.components = next;
+    await subject.save();
+    res.json({ success: true, data: subject.components });
+  } catch (e) {
+    console.error("saveComponents:", e);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+/** FACULTY ASSIGNMENTS */
+export const assignFacultyToSubject = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { facultyId, subgroup } = req.body;
+    if (!facultyId || !subgroup) {
+      return res.status(400).json({ success: false, message: "Faculty ID and subgroup are required" });
     }
 
     const faculty = await User.findOne({ _id: facultyId, role: "faculty" });
-    if (!faculty) {
-      return res.status(400).json({ success: false, message: "Invalid faculty member" });
-    }
+    if (!faculty) return res.status(400).json({ success: false, message: "Invalid faculty member" });
 
     const subject = await Subject.findOne({ _id: id, coordinator: req.user.id });
-    if (!subject) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Subject not found or unauthorized" });
-    }
+    if (!subject) return res.status(404).json({ success: false, message: "Subject not found or unauthorized" });
 
     const exists = subject.facultyAssignments.find(
-      (a) => a.faculty.toString() === facultyId && a.subgroup === subgroup
+      (a) => String(a.faculty) === facultyId && a.subgroup === subgroup
     );
     if (exists) {
-      return res
-        .status(400)
-        .json({ success: false, message: "This faculty is already assigned to this subgroup" });
+      return res.status(400).json({
+        success: false,
+        message: "This faculty is already assigned to this subgroup",
+      });
     }
 
     subject.facultyAssignments.push({ faculty: facultyId, subgroup });
     await subject.save();
     await subject.populate("facultyAssignments.faculty", "name email");
-
     res.json({ success: true, data: subject });
-  } catch (err) {
-    console.error("Assign faculty error:", err);
+  } catch (e) {
+    console.error("assignFacultyToSubject:", e);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -222,15 +191,10 @@ export const getFacultyAssignments = async (req, res) => {
       $or: [{ coordinator: req.user.id }, { "facultyAssignments.faculty": req.user.id }],
     }).populate("facultyAssignments.faculty", "name email");
 
-    if (!subject) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Subject not found or unauthorized" });
-    }
-
+    if (!subject) return res.status(404).json({ success: false, message: "Subject not found or unauthorized" });
     res.json({ success: true, data: subject.facultyAssignments });
-  } catch (err) {
-    console.error("Get faculty assignments error:", err);
+  } catch (e) {
+    console.error("getFacultyAssignments:", e);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -239,31 +203,26 @@ export const removeFacultyAssignment = async (req, res) => {
   try {
     const { id, assignmentId } = req.params;
     const subject = await Subject.findOne({ _id: id, coordinator: req.user.id });
-    if (!subject) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Subject not found or unauthorized" });
-    }
+    if (!subject) return res.status(404).json({ success: false, message: "Subject not found or unauthorized" });
 
     subject.facultyAssignments = subject.facultyAssignments.filter(
-      (a) => a._id.toString() !== assignmentId
+      (a) => String(a._id) !== String(assignmentId)
     );
     await subject.save();
     await subject.populate("facultyAssignments.faculty", "name email");
-
     res.json({ success: true, data: subject });
-  } catch (err) {
-    console.error("Remove faculty assignment error:", err);
+  } catch (e) {
+    console.error("removeFacultyAssignment:", e);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-export const getFacultyList = async (req, res) => {
+export const getFacultyList = async (_req, res) => {
   try {
-    const faculty = await User.find({ role: "faculty" }, "name email");
-    res.json({ success: true, data: faculty });
-  } catch (err) {
-    console.error("Get faculty list error:", err);
+    const list = await User.find({ role: "faculty" }, "name email");
+    res.json({ success: true, data: list });
+  } catch (e) {
+    console.error("getFacultyList:", e);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };

@@ -1,4 +1,3 @@
-// backend/routes/subjects.js
 import express from "express";
 import auth from "../middleware/auth.js";
 import {
@@ -6,18 +5,18 @@ import {
   getSubjects,
   updateSubject,
   addCourseObjective,
+  getComponents,
+  saveComponents,
   assignFacultyToSubject,
   getFacultyAssignments,
   removeFacultyAssignment,
   getFacultyList,
-  upsertComponent,
-  removeComponent,
 } from "../controllers/subjectController.js";
 
 const router = express.Router();
-
 router.use(auth);
 
+// CRUD
 router.post("/", createSubject);
 router.get("/", getSubjects);
 router.put("/:id", updateSubject);
@@ -25,16 +24,16 @@ router.put("/:id", updateSubject);
 // Course Objectives
 router.post("/:id/objectives", addCourseObjective);
 
-// Dynamic Components
-router.post("/:id/components", upsertComponent);        // body: { name, maxMarks, enabled? }
-router.delete("/:id/components/:name", removeComponent);
+// Components
+router.get("/:id/components", getComponents);
+router.post("/:id/components", saveComponents);
 
-// Faculty assignment
+// Faculty assignments
 router.post("/:id/assign-faculty", assignFacultyToSubject);
 router.get("/:id/faculty-assignments", getFacultyAssignments);
 router.delete("/:id/faculty-assignments/:assignmentId", removeFacultyAssignment);
 
-// Faculty list
+// List of all faculty
 router.get("/faculty-list", getFacultyList);
 
 export default router;
