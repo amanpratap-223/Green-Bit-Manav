@@ -1,26 +1,23 @@
-// src/App.jsx
 import React, { useState, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet, Navigate } from "react-router-dom";
+
 import Login from "./components/Login";
 import Register from "./components/Register";
+import Sidebar from "./components/Sidebar";
+
 import CoordinatorLanding from "./pages/CoordinatorLanding";
 import FacultyLanding from "./pages/FacultyLanding";
-import Sidebar from "./components/Sidebar";
 import SubjectDetail from "./components/SubjectDetail";
 import StudentReport from "./pages/StudentReport";
 
-// Layout wrapper (Sidebar + Navbar)
+/** Coordinator layout: Sidebar + top navbar */
 const AppLayout = ({ handleLogout, subjects, handleShowAddSubject }) => (
   <>
     <Sidebar subjects={subjects} onAddSubject={handleShowAddSubject} />
     <main className="ml-64">
-      {/* Navbar */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-40">
         <div className="flex justify-between items-center px-8 py-4">
-          <a
-            href="/"
-            className="text-2xl font-bold text-blue-600 hover:text-blue-800"
-          >
+          <a href="/" className="text-2xl font-bold text-blue-600 hover:text-blue-800">
             Greenbit Solutions
           </a>
           <button
@@ -31,13 +28,31 @@ const AppLayout = ({ handleLogout, subjects, handleShowAddSubject }) => (
           </button>
         </div>
       </header>
-
-      {/* Routed children */}
       <div className="p-8">
         <Outlet />
       </div>
     </main>
   </>
+);
+
+/** Faculty layout: NO sidebar, only top navbar; content via <Outlet/> */
+const FacultyLayout = ({ handleLogout }) => (
+  <main>
+    <header className="bg-white shadow-sm border-b sticky top-0 z-40">
+      <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+        <a href="/" className="text-2xl font-bold text-blue-600">Greenbit Solutions</a>
+        <button
+          onClick={handleLogout}
+          className="bg-red-500 text-white font-semibold px-5 py-2 rounded-lg hover:bg-red-600"
+        >
+          Logout
+        </button>
+      </div>
+    </header>
+    <div className="py-6">
+      <Outlet />
+    </div>
+  </main>
 );
 
 export default function App() {
@@ -46,11 +61,7 @@ export default function App() {
   const [showRegister, setShowRegister] = useState(false);
   const [subjects, setSubjects] = useState([]);
   const [showAddSubjectModal, setShowAddSubjectModal] = useState(false);
-  const [subjectInputs, setSubjectInputs] = useState({
-    name: "",
-    code: "",
-    semester: "",
-  });
+  const [subjectInputs, setSubjectInputs] = useState({ name: "", code: "", semester: "" });
   const [isLoading, setIsLoading] = useState(true);
 
   // Validate JWT expiry
@@ -99,9 +110,10 @@ export default function App() {
       setIsLoading(false);
     };
     init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load subjects
+  // Load subjects (for both coordinator & faculty)
   const loadSubjectsFromBackend = async (token = null) => {
     try {
       const authToken = token || localStorage.getItem("authToken");
@@ -130,8 +142,9 @@ export default function App() {
           _id: s._id,
           totalStudents: s.totalStudents || 0,
           facultyAssignments: s.facultyAssignments || [],
-          components: s.components || [], // ✅ dynamic assessment components
+          components: s.components || [],
           courseOutcomes: s.courseOutcomes || [],
+          coordinator: s.coordinator || null, // keep for faculty UI
         }));
         setSubjects(transformed);
       }
@@ -173,13 +186,9 @@ export default function App() {
     }
   };
 
-  // Add subject modal
+  // Add subject (coordinator)
   const handleAddSubject = async () => {
-    if (
-      !subjectInputs.name.trim() ||
-      !subjectInputs.code.trim() ||
-      !subjectInputs.semester.trim()
-    ) {
+    if (!subjectInputs.name.trim() || !subjectInputs.code.trim() || !subjectInputs.semester.trim()) {
       alert("All fields are required!");
       return;
     }
@@ -200,8 +209,9 @@ export default function App() {
         _id: saved._id,
         totalStudents: saved.totalStudents || 0,
         facultyAssignments: saved.facultyAssignments || [],
-        components: saved.components || [], // ✅ new
+        components: saved.components || [],
         courseOutcomes: saved.courseOutcomes || [],
+        coordinator: saved.coordinator || null,
       };
       setSubjects((prev) => [...prev, transformed]);
       setShowAddSubjectModal(false);
@@ -210,7 +220,7 @@ export default function App() {
     }
   };
 
-  // Update subject
+  // Update subject in local state
   const handleUpdateSubject = (updated, index) => {
     const next = [...subjects];
     next[index] = updated;
@@ -248,22 +258,16 @@ export default function App() {
   // Unauthenticated views
   if (!isAuthenticated) {
     return showRegister ? (
-      <Register
-        onRegister={handleRegister}
-        switchToLogin={() => setShowRegister(false)}
-      />
+      <Register onRegister={handleRegister} switchToLogin={() => setShowRegister(false)} />
     ) : (
-      <Login
-        onLogin={handleLogin}
-        switchToRegister={() => setShowRegister(true)}
-      />
+      <Login onLogin={handleLogin} switchToRegister={() => setShowRegister(true)} />
     );
   }
 
   // Main authenticated app
   return (
     <BrowserRouter>
-      {/* Add Subject Modal */}
+      {/* Add Subject Modal (coordinator; only appears when sidebar triggers it) */}
       {showAddSubjectModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[999]">
           <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-lg relative">
@@ -272,19 +276,13 @@ export default function App() {
               {["name", "code", "semester"].map((f) => (
                 <div key={f} className="flex flex-col">
                   <label className="text-left font-semibold text-blue-700 mb-1">
-                    {f === "name"
-                      ? "Subject Name"
-                      : f === "code"
-                      ? "Subject Code"
-                      : "Semester"}
+                    {f === "name" ? "Subject Name" : f === "code" ? "Subject Code" : "Semester"}
                   </label>
                   <input
                     type="text"
                     name={f}
                     value={subjectInputs[f]}
-                    onChange={(e) =>
-                      setSubjectInputs((prev) => ({ ...prev, [f]: e.target.value }))
-                    }
+                    onChange={(e) => setSubjectInputs((prev) => ({ ...prev, [f]: e.target.value }))}
                     placeholder={f}
                     className="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500"
                   />
@@ -308,61 +306,55 @@ export default function App() {
       )}
 
       <Routes>
-        {/* Subject Detail */}
+        {/* Subject detail (with its own Sidebar layout) */}
         <Route
           path="/subject/:idx"
           element={
             <>
-              <Sidebar
-                subjects={subjects}
-                onAddSubject={() => setShowAddSubjectModal(true)}
-              />
-              <SubjectDetail
-                subjects={subjects}
-                user={user}
-                onUpdateSubject={handleUpdateSubject}
-              />
+              <Sidebar subjects={subjects} onAddSubject={() => setShowAddSubjectModal(true)} />
+              <SubjectDetail subjects={subjects} user={user} onUpdateSubject={handleUpdateSubject} />
             </>
           }
         />
 
-        {/* Report */}
+        {/* Report page (with Sidebar) */}
         <Route
           path="/subject/:idx/report"
           element={
             <>
-              <Sidebar
-                subjects={subjects}
-                onAddSubject={() => setShowAddSubjectModal(true)}
-              />
+              <Sidebar subjects={subjects} onAddSubject={() => setShowAddSubjectModal(true)} />
               <StudentReport subjects={subjects} />
             </>
           }
         />
 
-        {/* Dashboard landing */}
+        {/* Root route: choose layout by role */}
         <Route
-          path="/*"
+          path="/"
           element={
-            <AppLayout
-              handleLogout={handleLogout}
-              subjects={subjects}
-              handleShowAddSubject={() => setShowAddSubjectModal(true)}
-            >
-              <Routes>
-                {user?.role === "coordinator" && (
-                  <Route
-                    path="/"
-                    element={<CoordinatorLanding subjects={subjects} />}
-                  />
-                )}
-                {user?.role !== "coordinator" && (
-                  <Route path="/" element={<FacultyLanding user={user} />} />
-                )}
-              </Routes>
-            </AppLayout>
+            user?.role === "coordinator" ? (
+              <AppLayout
+                handleLogout={handleLogout}
+                subjects={subjects}
+                handleShowAddSubject={() => setShowAddSubjectModal(true)}
+              />
+            ) : (
+              <FacultyLayout handleLogout={handleLogout} />
+            )
           }
-        />
+        >
+          <Route
+            index
+            element={
+              user?.role === "coordinator" ? (
+                <CoordinatorLanding subjects={subjects} />
+              ) : (
+                <FacultyLanding user={user} subjects={subjects} />
+              )
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   );

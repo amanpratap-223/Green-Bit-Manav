@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 
 const componentSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true, trim: true }, // e.g., MST, EST, Viva
+    name: { type: String, required: true, trim: true },
     maxMarks: { type: Number, required: true, min: 0 },
     enabled: { type: Boolean, default: true },
   },
@@ -15,15 +15,13 @@ const subjectSchema = new mongoose.Schema(
     name: { type: String, required: true },
     code: { type: String, required: true, unique: true },
     semester: { type: String, required: true },
+
     courseObjectives: [{ type: String }],
     courseOutcomes: [{ type: String }],
 
     totalStudents: { type: Number, default: 0 },
-    coordinator: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
+
+    coordinator: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
 
     facultyAssignments: [
       {
@@ -32,11 +30,7 @@ const subjectSchema = new mongoose.Schema(
       },
     ],
 
-    // NEW: dynamic assessment components
-    components: {
-      type: [componentSchema],
-      default: [], // starts empty; UI can add MST/EST/etc.
-    },
+    components: { type: [componentSchema], default: [] },
   },
   { timestamps: true }
 );
