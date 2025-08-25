@@ -5,28 +5,35 @@ import {
   getSubjects,
   updateSubject,
   addCourseObjective,
+  getComponents,
+  saveComponents,
   assignFacultyToSubject,
   getFacultyAssignments,
   removeFacultyAssignment,
-  getFacultyList
+  getFacultyList,
 } from "../controllers/subjectController.js";
 
 const router = express.Router();
-
-// All routes require authentication
 router.use(auth);
 
+// CRUD
 router.post("/", createSubject);
 router.get("/", getSubjects);
 router.put("/:id", updateSubject);
+
+// Course Objectives
 router.post("/:id/objectives", addCourseObjective);
 
-// Faculty assignment routes
+// Components
+router.get("/:id/components", getComponents);
+router.post("/:id/components", saveComponents);
+
+// Faculty assignments
 router.post("/:id/assign-faculty", assignFacultyToSubject);
 router.get("/:id/faculty-assignments", getFacultyAssignments);
 router.delete("/:id/faculty-assignments/:assignmentId", removeFacultyAssignment);
 
-// Get faculty list
+// List of all faculty
 router.get("/faculty-list", getFacultyList);
 
 export default router;

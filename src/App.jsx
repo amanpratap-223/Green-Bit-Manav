@@ -1,3 +1,4 @@
+// src/App.jsx
 import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 import Login from "./components/Login";
@@ -8,7 +9,7 @@ import Sidebar from "./components/Sidebar";
 import SubjectDetail from "./components/SubjectDetail";
 import StudentReport from "./pages/StudentReport";
 
-// Layout component that keeps Sidebar + Navbar persistent
+// Layout wrapper (Sidebar + Navbar)
 const AppLayout = ({ handleLogout, subjects, handleShowAddSubject }) => (
   <>
     <Sidebar subjects={subjects} onAddSubject={handleShowAddSubject} />
@@ -16,7 +17,10 @@ const AppLayout = ({ handleLogout, subjects, handleShowAddSubject }) => (
       {/* Navbar */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-40">
         <div className="flex justify-between items-center px-8 py-4">
-          <a href="/" className="text-2xl font-bold text-blue-600 hover:text-blue-800">
+          <a
+            href="/"
+            className="text-2xl font-bold text-blue-600 hover:text-blue-800"
+          >
             Greenbit Solutions
           </a>
           <button
@@ -28,7 +32,7 @@ const AppLayout = ({ handleLogout, subjects, handleShowAddSubject }) => (
         </div>
       </header>
 
-      {/* Routed content */}
+      {/* Routed children */}
       <div className="p-8">
         <Outlet />
       </div>
@@ -49,18 +53,18 @@ export default function App() {
   });
   const [isLoading, setIsLoading] = useState(true);
 
-  // Check if token is valid
+  // Validate JWT expiry
   const isTokenValid = (token) => {
     if (!token) return false;
     try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
+      const payload = JSON.parse(atob(token.split(".")[1]));
       return payload.exp * 1000 > Date.now();
-    } catch (error) {
+    } catch {
       return false;
     }
   };
 
-  // Clear invalid authentication
+  // Clear auth data
   const clearAuth = () => {
     localStorage.removeItem("authToken");
     localStorage.removeItem("user");
@@ -69,16 +73,14 @@ export default function App() {
     setSubjects([]);
   };
 
-  // Check authentication and load subjects on mount
+  // Init on mount
   useEffect(() => {
-    const initializeApp = async () => {
+    const init = async () => {
       const token = localStorage.getItem("authToken");
       const storedUser = localStorage.getItem("user");
-      
+
       if (token && storedUser) {
-        // Validate token before proceeding
         if (!isTokenValid(token)) {
-          console.log("Token expired, clearing auth data");
           clearAuth();
           setIsLoading(false);
           return;
@@ -88,21 +90,18 @@ export default function App() {
           const userData = JSON.parse(storedUser);
           setUser(userData);
           setIsAuthenticated(true);
-          
-          // Load subjects from backend
           await loadSubjectsFromBackend(token);
-        } catch (error) {
-          console.error("Error initializing app:", error);
+        } catch (err) {
+          console.error("Init error:", err);
           clearAuth();
         }
       }
       setIsLoading(false);
     };
-
-    initializeApp();
+    init();
   }, []);
 
-  // Function to load subjects from backend
+  // Load subjects
   const loadSubjectsFromBackend = async (token = null) => {
     try {
       const authToken = token || localStorage.getItem("authToken");
@@ -111,105 +110,70 @@ export default function App() {
         return;
       }
 
-      const response = await fetch("http://localhost:5000/api/subjects", {
-        headers: {
-          "Authorization": `Bearer ${authToken}`,
-          "Content-Type": "application/json"
-        }
+      const res = await fetch("http://localhost:5000/api/subjects", {
+        headers: { Authorization: `Bearer ${authToken}` },
       });
-      
-      if (response.status === 401) {
-        console.log("Unauthorized - clearing auth data");
+
+      if (res.status === 401) {
         clearAuth();
         return;
       }
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
+      const data = await res.json();
       if (data.success) {
-        // Transform backend data to match frontend format
-        const transformedSubjects = data.data.map(subject => ({
-          name: subject.name,
-          code: subject.code,
-          semester: subject.semester,
-          courseObjectives: subject.courseObjectives || [],
-          students: [], // Will be loaded separately when needed
-          _id: subject._id, // Keep the MongoDB ID for API calls
-          totalStudents: subject.totalStudents || 0,
-          facultyAssignments: subject.facultyAssignments || [],
-          weightage: subject.weightage || { MST: 0, EST: 0, Sessional: 0, Lab: 0 },
-          courseOutcomes: subject.courseOutcomes || []
+        const transformed = data.data.map((s) => ({
+          name: s.name,
+          code: s.code,
+          semester: s.semester,
+          courseObjectives: s.courseObjectives || [],
+          students: [],
+          _id: s._id,
+          totalStudents: s.totalStudents || 0,
+          facultyAssignments: s.facultyAssignments || [],
+          components: s.components || [], // ✅ dynamic assessment components
+          courseOutcomes: s.courseOutcomes || [],
         }));
-        setSubjects(transformedSubjects);
-      } else {
-        console.error("Failed to load subjects:", data.message);
+        setSubjects(transformed);
       }
-    } catch (error) {
-      console.error("Error loading subjects:", error);
-      if (error.message.includes("401") || error.message.includes("Unauthorized")) {
-        clearAuth();
-      }
+    } catch (err) {
+      console.error("Load subjects error:", err);
     }
   };
 
-  // Function to save subject to backend
+  // Save subject
   const saveSubjectToBackend = async (subjectData) => {
     try {
       const token = localStorage.getItem("authToken");
       if (!token || !isTokenValid(token)) {
         clearAuth();
-        throw new Error("Authentication required. Please login again.");
+        throw new Error("Authentication required.");
       }
 
-      const response = await fetch("http://localhost:5000/api/subjects", {
+      const res = await fetch("http://localhost:5000/api/subjects", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(subjectData)
+        body: JSON.stringify(subjectData),
       });
 
-      if (response.status === 401) {
+      if (res.status === 401) {
         clearAuth();
-        throw new Error("Session expired. Please login again.");
+        throw new Error("Session expired.");
       }
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        return data.data;
-      } else {
-        throw new Error(data.message || "Unknown error occurred");
-      }
-    } catch (error) {
-      console.error("Error saving subject:", error);
-      
-      if (error.message.includes("Authentication required") || 
-          error.message.includes("Session expired")) {
-        alert(error.message);
-      } else if (error.message === "Failed to fetch") {
-        alert("Unable to connect to server. Please check if the backend is running.");
-      } else {
-        alert("Error saving subject: " + error.message);
-      }
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message);
+      return data.data;
+    } catch (err) {
+      console.error("Save subject error:", err);
+      alert(err.message);
       return null;
     }
   };
 
-  // Modal handlers
-  function handleShowAddSubject() {
-    setShowAddSubjectModal(true);
-  }
-
+  // Add subject modal
   const handleAddSubject = async () => {
     if (
       !subjectInputs.name.trim() ||
@@ -220,82 +184,56 @@ export default function App() {
       return;
     }
 
-    try {
-      const savedSubject = await saveSubjectToBackend({
-        name: subjectInputs.name.trim(),
-        code: subjectInputs.code.trim(),
-        semester: subjectInputs.semester.trim()
-      });
+    const saved = await saveSubjectToBackend({
+      name: subjectInputs.name.trim(),
+      code: subjectInputs.code.trim(),
+      semester: subjectInputs.semester.trim(),
+    });
 
-      if (savedSubject) {
-        // Transform and add to local state
-        const transformedSubject = {
-          name: savedSubject.name,
-          code: savedSubject.code,
-          semester: savedSubject.semester,
-          courseObjectives: savedSubject.courseObjectives || [],
-          students: [],
-          _id: savedSubject._id,
-          totalStudents: savedSubject.totalStudents || 0,
-          facultyAssignments: savedSubject.facultyAssignments || [],
-          weightage: savedSubject.weightage || { MST: 0, EST: 0, Sessional: 0, Lab: 0 },
-          courseOutcomes: savedSubject.courseOutcomes || []
-        };
-
-        setSubjects(prev => [...prev, transformedSubject]);
-        setShowAddSubjectModal(false);
-        setSubjectInputs({ name: "", code: "", semester: "" });
-        alert("Subject created successfully!");
-      }
-    } catch (error) {
-      console.error("Error in handleAddSubject:", error);
-      // Error already handled in saveSubjectToBackend
+    if (saved) {
+      const transformed = {
+        name: saved.name,
+        code: saved.code,
+        semester: saved.semester,
+        courseObjectives: saved.courseObjectives || [],
+        students: [],
+        _id: saved._id,
+        totalStudents: saved.totalStudents || 0,
+        facultyAssignments: saved.facultyAssignments || [],
+        components: saved.components || [], // ✅ new
+        courseOutcomes: saved.courseOutcomes || [],
+      };
+      setSubjects((prev) => [...prev, transformed]);
+      setShowAddSubjectModal(false);
+      setSubjectInputs({ name: "", code: "", semester: "" });
+      alert("Subject created successfully!");
     }
   };
 
-  // Update a subject (used by SubjectDetail)
-  function handleUpdateSubject(updatedSubject, index) {
-    const newSubjects = [...subjects];
-    newSubjects[index] = updatedSubject;
-    setSubjects(newSubjects);
-  }
-
-  function handleCancelAddSubject() {
-    setShowAddSubjectModal(false);
-    setSubjectInputs({ name: "", code: "", semester: "" });
-  }
-
-  function handleSubjectInputChange(e) {
-    const { name, value } = e.target;
-    setSubjectInputs((prev) => ({ ...prev, [name]: value }));
-  }
+  // Update subject
+  const handleUpdateSubject = (updated, index) => {
+    const next = [...subjects];
+    next[index] = updated;
+    setSubjects(next);
+  };
 
   // Auth handlers
-  const handleLogin = (userData) => {
+  const handleLogin = (u) => {
     setIsAuthenticated(true);
-    setUser(userData);
-    setShowRegister(false);
-    // Load subjects after login
+    setUser(u);
     loadSubjectsFromBackend();
   };
-
-  const handleRegister = (userData) => {
+  const handleRegister = (u) => {
     setIsAuthenticated(true);
-    setUser(userData);
-    setShowRegister(false);
-    // Load subjects after register
+    setUser(u);
     loadSubjectsFromBackend();
   };
-
   const handleLogout = () => {
     clearAuth();
     setShowRegister(false);
   };
 
-  const switchToRegister = () => setShowRegister(true);
-  const switchToLogin = () => setShowRegister(false);
-
-  // Show loading while initializing
+  // Loading screen
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -307,16 +245,22 @@ export default function App() {
     );
   }
 
-  // Unauth views
+  // Unauthenticated views
   if (!isAuthenticated) {
     return showRegister ? (
-      <Register onRegister={handleRegister} switchToLogin={switchToLogin} />
+      <Register
+        onRegister={handleRegister}
+        switchToLogin={() => setShowRegister(false)}
+      />
     ) : (
-      <Login onLogin={handleLogin} switchToRegister={switchToRegister} />
+      <Login
+        onLogin={handleLogin}
+        switchToRegister={() => setShowRegister(true)}
+      />
     );
   }
 
-  // Main application
+  // Main authenticated app
   return (
     <BrowserRouter>
       {/* Add Subject Modal */}
@@ -325,38 +269,37 @@ export default function App() {
           <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-lg relative">
             <h2 className="text-xl font-bold mb-4 text-center">Add Subject</h2>
             <div className="space-y-4">
-              {[
-                { label: "Subject Name", name: "name" },
-                { label: "Subject Code", name: "code" },
-                { label: "Semester", name: "semester" },
-              ].map(({ label, name }) => (
-                <div key={name} className="flex flex-col">
+              {["name", "code", "semester"].map((f) => (
+                <div key={f} className="flex flex-col">
                   <label className="text-left font-semibold text-blue-700 mb-1">
-                    {label}
+                    {f === "name"
+                      ? "Subject Name"
+                      : f === "code"
+                      ? "Subject Code"
+                      : "Semester"}
                   </label>
                   <input
                     type="text"
-                    name={name}
-                    value={subjectInputs[name]}
-                    onChange={handleSubjectInputChange}
-                    placeholder={label}
-                    className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    name={f}
+                    value={subjectInputs[f]}
+                    onChange={(e) =>
+                      setSubjectInputs((prev) => ({ ...prev, [f]: e.target.value }))
+                    }
+                    placeholder={f}
+                    className="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               ))}
             </div>
-
             <button
               onClick={handleAddSubject}
               className="mt-6 w-full bg-blue-600 text-white font-semibold rounded-md py-2 hover:bg-blue-700 transition"
             >
               Create
             </button>
-
             <button
-              onClick={handleCancelAddSubject}
+              onClick={() => setShowAddSubjectModal(false)}
               className="absolute top-3 right-3 text-gray-400 hover:text-gray-700"
-              title="Close"
             >
               &#10005;
             </button>
@@ -365,12 +308,15 @@ export default function App() {
       )}
 
       <Routes>
-        {/* Subject details */}
+        {/* Subject Detail */}
         <Route
           path="/subject/:idx"
           element={
             <>
-              <Sidebar subjects={subjects} onAddSubject={handleShowAddSubject} />
+              <Sidebar
+                subjects={subjects}
+                onAddSubject={() => setShowAddSubjectModal(true)}
+              />
               <SubjectDetail
                 subjects={subjects}
                 user={user}
@@ -380,29 +326,35 @@ export default function App() {
           }
         />
 
-        {/* Subject report (after Excel upload) */}
+        {/* Report */}
         <Route
           path="/subject/:idx/report"
           element={
             <>
-              <Sidebar subjects={subjects} onAddSubject={handleShowAddSubject} />
+              <Sidebar
+                subjects={subjects}
+                onAddSubject={() => setShowAddSubjectModal(true)}
+              />
               <StudentReport subjects={subjects} />
             </>
           }
         />
 
-        {/* App layout with dashboard landing routes */}
+        {/* Dashboard landing */}
         <Route
           path="/*"
           element={
             <AppLayout
               handleLogout={handleLogout}
               subjects={subjects}
-              handleShowAddSubject={handleShowAddSubject}
+              handleShowAddSubject={() => setShowAddSubjectModal(true)}
             >
               <Routes>
                 {user?.role === "coordinator" && (
-                  <Route path="/" element={<CoordinatorLanding subjects={subjects} />} />
+                  <Route
+                    path="/"
+                    element={<CoordinatorLanding subjects={subjects} />}
+                  />
                 )}
                 {user?.role !== "coordinator" && (
                   <Route path="/" element={<FacultyLanding user={user} />} />
