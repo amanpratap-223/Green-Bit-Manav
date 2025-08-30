@@ -4,16 +4,20 @@ import { BrowserRouter, Routes, Route, Outlet, Navigate } from "react-router-dom
 import Login from "./components/Login";
 import Register from "./components/Register";
 import Sidebar from "./components/Sidebar";
-
 import CoordinatorLanding from "./pages/CoordinatorLanding";
 import FacultyLanding from "./pages/FacultyLanding";
 import SubjectDetail from "./components/SubjectDetail";
 import StudentReport from "./pages/StudentReport";
 
-/** Coordinator layout: Sidebar + top navbar */
-const AppLayout = ({ handleLogout, subjects, handleShowAddSubject }) => (
+// 🔥 FIXED: Added 'user' prop to AppLayout
+const AppLayout = ({ handleLogout, subjects, handleShowAddSubject, onRefreshSubjects, user }) => (
   <>
-    <Sidebar subjects={subjects} onAddSubject={handleShowAddSubject} />
+    <Sidebar 
+      subjects={subjects} 
+      onAddSubject={handleShowAddSubject} 
+      onRefreshSubjects={onRefreshSubjects}
+      user={user} // 🔥 Now user is properly passed
+    />
     <main className="ml-64">
       <header className="bg-white shadow-sm border-b sticky top-0 z-40">
         <div className="flex justify-between items-center px-8 py-4">
@@ -35,7 +39,6 @@ const AppLayout = ({ handleLogout, subjects, handleShowAddSubject }) => (
   </>
 );
 
-/** Faculty layout: NO sidebar, only top navbar; content via <Outlet/> */
 const FacultyLayout = ({ handleLogout }) => (
   <main>
     <header className="bg-white shadow-sm border-b sticky top-0 z-40">
@@ -63,6 +66,8 @@ export default function App() {
   const [showAddSubjectModal, setShowAddSubjectModal] = useState(false);
   const [subjectInputs, setSubjectInputs] = useState({ name: "", code: "", semester: "" });
   const [isLoading, setIsLoading] = useState(true);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Validate JWT expiry
   const isTokenValid = (token) => {
@@ -82,6 +87,41 @@ export default function App() {
     setIsAuthenticated(false);
     setUser(null);
     setSubjects([]);
+  };
+
+  // 🔥 ENHANCED: Better refresh subjects function
+  const refreshSubjects = async () => {
+    if (isRefreshing) return;
+    
+    console.log('🔄 Refreshing subjects and student data...');
+    setIsRefreshing(true);
+    
+    try {
+      await loadSubjectsFromBackend();
+      setRefreshTrigger(prev => prev + 1);
+      console.log('✅ Refresh completed successfully');
+    } catch (error) {
+      console.error('❌ Refresh failed:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // 🔥 NEW: Force refresh all data (for after uploads)
+  const forceRefreshAllData = async () => {
+    console.log('🔄 Force refreshing all application data...');
+    setIsRefreshing(true);
+    
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await loadSubjectsFromBackend();
+      setRefreshTrigger(prev => prev + 1);
+      console.log('✅ Force refresh completed');
+    } catch (error) {
+      console.error('❌ Force refresh failed:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   // Init on mount
@@ -110,10 +150,9 @@ export default function App() {
       setIsLoading(false);
     };
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load subjects (for both coordinator & faculty)
+  // 🔥 ENHANCED: Load subjects with better error handling
   const loadSubjectsFromBackend = async (token = null) => {
     try {
       const authToken = token || localStorage.getItem("authToken");
@@ -122,6 +161,7 @@ export default function App() {
         return;
       }
 
+      console.log('📡 Loading subjects from backend...');
       const res = await fetch("http://localhost:5000/api/subjects", {
         headers: { Authorization: `Bearer ${authToken}` },
       });
@@ -144,12 +184,14 @@ export default function App() {
           facultyAssignments: s.facultyAssignments || [],
           components: s.components || [],
           courseOutcomes: s.courseOutcomes || [],
-          coordinator: s.coordinator || null, // keep for faculty UI
+          coordinator: s.coordinator || null,
         }));
+        
         setSubjects(transformed);
+        console.log('✅ Subjects loaded:', transformed.length, 'subjects');
       }
     } catch (err) {
-      console.error("Load subjects error:", err);
+      console.error("❌ Load subjects error:", err);
     }
   };
 
@@ -161,7 +203,6 @@ export default function App() {
         clearAuth();
         throw new Error("Authentication required.");
       }
-
       const res = await fetch("http://localhost:5000/api/subjects", {
         method: "POST",
         headers: {
@@ -170,12 +211,10 @@ export default function App() {
         },
         body: JSON.stringify(subjectData),
       });
-
       if (res.status === 401) {
         clearAuth();
         throw new Error("Session expired.");
       }
-
       const data = await res.json();
       if (!data.success) throw new Error(data.message);
       return data.data;
@@ -192,13 +231,11 @@ export default function App() {
       alert("All fields are required!");
       return;
     }
-
     const saved = await saveSubjectToBackend({
       name: subjectInputs.name.trim(),
       code: subjectInputs.code.trim(),
       semester: subjectInputs.semester.trim(),
     });
-
     if (saved) {
       const transformed = {
         name: saved.name,
@@ -217,14 +254,35 @@ export default function App() {
       setShowAddSubjectModal(false);
       setSubjectInputs({ name: "", code: "", semester: "" });
       alert("Subject created successfully!");
+      
+      setTimeout(refreshSubjects, 500);
     }
   };
 
-  // Update subject in local state
-  const handleUpdateSubject = (updated, index) => {
+  // 🔥 ENHANCED: Update subject with better refresh
+  const handleUpdateSubject = async (updated, index) => {
+    console.log('📝 Updating subject at index:', index);
     const next = [...subjects];
     next[index] = updated;
     setSubjects(next);
+    
+    setRefreshTrigger(prev => prev + 1);
+    
+    setTimeout(() => {
+      forceRefreshAllData();
+    }, 500);
+  };
+
+  // Remove subject by ID
+  const handleRemoveSubject = async (subjectId) => {
+    console.log('🗑️ Removing subject with ID:', subjectId);
+    setSubjects((prevSubjects) => {
+      const filtered = prevSubjects.filter(subject => subject._id !== subjectId);
+      console.log('✅ Subjects after removal:', filtered.length);
+      return filtered;
+    });
+
+    setTimeout(refreshSubjects, 1000);
   };
 
   // Auth handlers
@@ -267,7 +325,17 @@ export default function App() {
   // Main authenticated app
   return (
     <BrowserRouter>
-      {/* Add Subject Modal (coordinator; only appears when sidebar triggers it) */}
+      {/* 🔥 NEW: Global refresh indicator */}
+      {isRefreshing && (
+        <div className="fixed top-4 right-4 z-[9999] bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg">
+          <div className="flex items-center space-x-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+            <span>Syncing data...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Add Subject Modal */}
       {showAddSubjectModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[999]">
           <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-lg relative">
@@ -306,29 +374,49 @@ export default function App() {
       )}
 
       <Routes>
-        {/* Subject detail (with its own Sidebar layout) */}
+        {/* Subject detail */}
         <Route
           path="/subject/:idx"
           element={
             <>
-              <Sidebar subjects={subjects} onAddSubject={() => setShowAddSubjectModal(true)} />
-              <SubjectDetail subjects={subjects} user={user} onUpdateSubject={handleUpdateSubject} />
+              <Sidebar
+                subjects={subjects}
+                onAddSubject={() => setShowAddSubjectModal(true)}
+                onRemoveSubject={handleRemoveSubject}
+                user={user}
+                onRefreshSubjects={refreshSubjects}
+              />
+              <SubjectDetail 
+                subjects={subjects} 
+                user={user} 
+                onUpdateSubject={handleUpdateSubject}
+                onRefreshSubjects={forceRefreshAllData}
+              />
             </>
           }
         />
-
-        {/* Report page (with Sidebar) */}
+        {/* Report page */}
         <Route
           path="/subject/:idx/report"
           element={
             <>
-              <Sidebar subjects={subjects} onAddSubject={() => setShowAddSubjectModal(true)} />
-              <StudentReport subjects={subjects} />
+              <Sidebar
+                subjects={subjects}
+                onAddSubject={() => setShowAddSubjectModal(true)}
+                onRemoveSubject={handleRemoveSubject}
+                user={user}
+                onRefreshSubjects={refreshSubjects}
+              />
+              <StudentReport 
+                subjects={subjects} 
+                user={user} 
+                onRefreshSubjects={refreshSubjects}
+              />
             </>
           }
         />
 
-        {/* Root route: choose layout by role */}
+        {/* Root route */}
         <Route
           path="/"
           element={
@@ -337,6 +425,8 @@ export default function App() {
                 handleLogout={handleLogout}
                 subjects={subjects}
                 handleShowAddSubject={() => setShowAddSubjectModal(true)}
+                onRefreshSubjects={refreshSubjects}
+                user={user} // 🔥 FIXED: Now passing user prop
               />
             ) : (
               <FacultyLayout handleLogout={handleLogout} />
@@ -347,9 +437,19 @@ export default function App() {
             index
             element={
               user?.role === "coordinator" ? (
-                <CoordinatorLanding subjects={subjects} />
+                <CoordinatorLanding 
+                  subjects={subjects} 
+                  onRemoveSubject={handleRemoveSubject}
+                  onRefreshSubjects={refreshSubjects}
+                />
               ) : (
-                <FacultyLanding user={user} subjects={subjects} />
+                <FacultyLanding 
+                  user={user} 
+                  subjects={subjects} 
+                  onRefreshSubjects={refreshSubjects}
+                  refreshTrigger={refreshTrigger}
+                  isRefreshing={isRefreshing}
+                />
               )
             }
           />

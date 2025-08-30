@@ -3,16 +3,18 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 
-export default function SubjectDetail({ subjects, user, onUpdateSubject }) {
+export default function SubjectDetail({ subjects, user, onUpdateSubject, onRefreshSubjects }) {
   const { idx } = useParams();
   const navigate = useNavigate();
   const subject = subjects[idx];
 
   const [newObjective, setNewObjective] = useState("");
-  const [components, setComponents] = useState([]); // [{ name, maxMarks, enabled }]
+  const [components, setComponents] = useState([]);
   const [showAddComp, setShowAddComp] = useState(false);
   const [compName, setCompName] = useState("");
   const [compMax, setCompMax] = useState("");
+  const [compQuestions, setCompQuestions] = useState("3");
+  const [isUploading, setIsUploading] = useState(false); // 🔥 NEW: Upload state
 
   useEffect(() => {
     const load = async () => {
@@ -87,6 +89,10 @@ export default function SubjectDetail({ subjects, user, onUpdateSubject }) {
       const j = await res.json();
       if (j.success) {
         setComponents(j.data);
+        // 🔥 NEW: Trigger refresh after component changes
+        if (onRefreshSubjects) {
+          setTimeout(onRefreshSubjects, 500);
+        }
       } else {
         alert(j.message || "Failed to save components");
       }
@@ -99,11 +105,21 @@ export default function SubjectDetail({ subjects, user, onUpdateSubject }) {
   const handleAddComponent = async () => {
     const name = compName.trim();
     const max = Number(compMax);
-    if (!name || Number.isNaN(max)) return;
-    const next = [...components, { name, maxMarks: max, enabled: true }];
+    const questions = Number(compQuestions);
+    if (!name || Number.isNaN(max) || Number.isNaN(questions) || questions < 1) {
+      alert("Please enter valid component details");
+      return;
+    }
+    const next = [...components, { 
+      name, 
+      maxMarks: max, 
+      enabled: true, 
+      questions: questions
+    }];
     await handleSaveComponents(next);
     setCompName("");
     setCompMax("");
+    setCompQuestions("3");
     setShowAddComp(false);
   };
 
@@ -126,22 +142,30 @@ export default function SubjectDetail({ subjects, user, onUpdateSubject }) {
       Subgroup: "3021",
       Branch: "ENC",
     };
+
     for (const c of components.filter((x) => x.enabled)) {
-      base[c.name] = "";
+      const questionCount = c.questions || 3;
+      for (let i = 1; i <= questionCount; i++) {
+        base[`${c.name}(Q${i})`] = "";
+      }
     }
+
     const ws = XLSX.utils.json_to_sheet([base]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "StudentsTemplate");
     XLSX.writeFile(wb, `${subject.code}_StudentsTemplate.xlsx`);
   };
 
+  // 🔥 UPDATED: Enhanced upload with proper refresh trigger
   const handleUploadStudents = (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
+    setIsUploading(true); // Show loading state
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
+        console.log('📤 Starting Excel upload process...');
         const data = new Uint8Array(e.target.result);
         const wb = XLSX.read(data, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
@@ -149,8 +173,11 @@ export default function SubjectDetail({ subjects, user, onUpdateSubject }) {
 
         if (jsonData.length === 0) {
           alert("The Excel file appears to be empty.");
+          setIsUploading(false);
           return;
         }
+
+        console.log(`📊 Processing ${jsonData.length} student records...`);
 
         const token = localStorage.getItem("authToken");
         const response = await fetch(
@@ -170,37 +197,89 @@ export default function SubjectDetail({ subjects, user, onUpdateSubject }) {
 
         const result = await response.json();
         if (result.success) {
+          console.log('✅ Upload successful:', result.data.studentsUploaded, 'students');
+          
           alert(
             `Successfully uploaded ${result.data.studentsUploaded} students!`
           );
+          
+          // 🔥 NEW: Update local subject state immediately
           const updatedSubject = {
             ...subject,
             totalStudents: result.data.studentsUploaded,
             students: jsonData,
           };
           onUpdateSubject(updatedSubject, idx);
-          navigate(`/subject/${idx}/report`);
+          
+          // 🔥 NEW: Trigger global data refresh for all components
+          console.log('🔄 Triggering global data refresh...');
+          if (onRefreshSubjects) {
+            // Small delay to ensure backend has processed the data
+            setTimeout(() => {
+              onRefreshSubjects();
+              console.log('✅ Global refresh triggered');
+            }, 1000);
+          }
+          
+          // Navigate to report page
+          setTimeout(() => {
+            navigate(`/subject/${idx}/report`);
+          }, 1500);
         } else {
+          console.error('❌ Upload failed:', result.message);
           alert("Error uploading students: " + result.message);
         }
       } catch (error) {
-        console.error("Error processing Excel file:", error);
+        console.error("❌ Error processing Excel file:", error);
         alert("Error processing Excel file: " + error.message);
+      } finally {
+        setIsUploading(false);
       }
     };
 
     reader.readAsArrayBuffer(file);
   };
 
+  const handleBackToHome = () => {
+    if (user?.role === "coordinator") {
+      navigate("/");
+    } else if (user?.role === "faculty") {
+      navigate("/");
+    } else {
+      navigate("/");
+    }
+  };
+
   return (
     <div className="pl-72 pt-8 pr-8 pb-10">
+      {/* 🔥 NEW: Upload progress indicator */}
+      {isUploading && (
+        <div className="fixed top-4 right-4 z-[9999] bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg">
+          <div className="flex items-center space-x-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+            <span>Uploading students...</span>
+          </div>
+        </div>
+      )}
+      
       <div className="bg-white rounded-lg shadow-lg p-8">
-        <h1 className="text-2xl font-bold text-blue-800 mb-2">
-          {subject.name} ({subject.code})
-        </h1>
-        <p className="text-gray-600 mb-6">
-          Semester: <span className="font-semibold">{subject.semester}</span>
-        </p>
+        {/* Header with Back Button */}
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-blue-800 mb-2">
+              {subject.name} ({subject.code})
+            </h1>
+            <p className="text-gray-600">
+              Semester: <span className="font-semibold">{subject.semester}</span>
+            </p>
+          </div>
+          <button
+            onClick={handleBackToHome}
+            className="bg-gray-200 text-gray-800 px-4 py-2 rounded hover:bg-gray-300"
+          >
+            Back to Home
+          </button>
+        </div>
 
         {/* Components Card */}
         <div className="mb-8">
@@ -219,7 +298,7 @@ export default function SubjectDetail({ subjects, user, onUpdateSubject }) {
 
             {showAddComp && (
               <div className="mb-4 p-3 bg-blue-50 rounded">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                   <input
                     className="border rounded px-3 py-2"
                     placeholder="Component name (e.g., MST)"
@@ -234,6 +313,15 @@ export default function SubjectDetail({ subjects, user, onUpdateSubject }) {
                     value={compMax}
                     onChange={(e) => setCompMax(e.target.value)}
                   />
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    className="border rounded px-3 py-2"
+                    placeholder="Questions (e.g., 3)"
+                    value={compQuestions}
+                    onChange={(e) => setCompQuestions(e.target.value)}
+                  />
                   <div className="flex gap-2">
                     <button
                       onClick={handleAddComponent}
@@ -246,6 +334,7 @@ export default function SubjectDetail({ subjects, user, onUpdateSubject }) {
                         setShowAddComp(false);
                         setCompName("");
                         setCompMax("");
+                        setCompQuestions("3");
                       }}
                       className="bg-gray-200 text-gray-800 px-3 py-2 rounded hover:bg-gray-300 w-full"
                     >
@@ -270,11 +359,15 @@ export default function SubjectDetail({ subjects, user, onUpdateSubject }) {
                     <div className="flex items-center gap-3">
                       <span className="font-medium">{c.name}</span>
                       <span className="text-gray-500">Max: {c.maxMarks}</span>
+                      <span className="text-blue-600 text-sm">
+                        {c.questions || 3} Questions
+                      </span>
                       <label className="flex items-center gap-1 text-sm">
                         <input
                           type="checkbox"
                           checked={c.enabled}
                           onChange={() => handleToggleEnable(c.name)}
+                          disabled={user?.role !== "coordinator"}
                         />
                         <span className="text-gray-700">Enabled</span>
                       </label>
@@ -331,16 +424,24 @@ export default function SubjectDetail({ subjects, user, onUpdateSubject }) {
               <button
                 onClick={handleDownloadTemplate}
                 className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                disabled={isUploading}
               >
                 Download Template
               </button>
-              <label className="bg-purple-600 text-white px-4 py-2 rounded cursor-pointer hover:bg-purple-700 whitespace-nowrap">
-                Upload Student Excel
+              <label 
+                className={`px-4 py-2 rounded cursor-pointer whitespace-nowrap transition-colors ${
+                  isUploading 
+                    ? 'bg-gray-400 text-gray-200 cursor-not-allowed' 
+                    : 'bg-purple-600 text-white hover:bg-purple-700'
+                }`}
+              >
+                {isUploading ? 'Uploading...' : 'Upload Student Excel'}
                 <input
                   type="file"
                   accept=".xlsx,.xls"
                   onChange={handleUploadStudents}
                   className="hidden"
+                  disabled={isUploading}
                 />
               </label>
             </div>

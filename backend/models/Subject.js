@@ -1,4 +1,3 @@
-// backend/models/Subject.js
 import mongoose from "mongoose";
 
 const componentSchema = new mongoose.Schema(
@@ -6,6 +5,7 @@ const componentSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     maxMarks: { type: Number, required: true, min: 0 },
     enabled: { type: Boolean, default: true },
+    questions: { type: Number, default: 3, min: 1, max: 10 }, // 🔥 NEW: Number of questions per component
   },
   { _id: false }
 );

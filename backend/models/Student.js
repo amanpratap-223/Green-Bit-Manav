@@ -1,4 +1,3 @@
-// backend/models/Student.js
 import mongoose from "mongoose";
 
 const studentSchema = new mongoose.Schema(
@@ -12,10 +11,10 @@ const studentSchema = new mongoose.Schema(
       ref: "Subject",
       required: true,
     },
-    // dynamic assessment components (MST/EST/anything)
+    // 🔥 UPDATED: Support both Number and Object formats for marks
     marks: {
       type: Map,
-      of: Number,
+      of: mongoose.Schema.Types.Mixed, // 🔥 Changed from Number to Mixed to support objects
       default: {},
     },
   },

@@ -1,4 +1,5 @@
 import Subject from "../models/Subject.js";
+import Student from "../models/Student.js";
 import User from "../models/User.js";
 
 /** CREATE */
@@ -23,6 +24,49 @@ export const createSubject = async (req, res) => {
     }
     console.error("createSubject:", e);
     res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+/** DELETE SUBJECT (coordinator only) */
+export const deleteSubject = async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log('Delete request for subject ID:', id);
+    console.log('User requesting delete:', req.user);
+    
+    // Validate MongoDB ObjectId format
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ success: false, message: "Invalid subject ID format" });
+    }
+    
+    // Find subject first
+    const subject = await Subject.findById(id);
+    console.log('Found subject:', subject);
+    
+    if (!subject) {
+      return res.status(404).json({ success: false, message: "Subject not found" });
+    }
+    
+    // Check if user is the coordinator of this subject
+    if (subject.coordinator.toString() !== req.user.id.toString()) {
+      return res.status(403).json({ success: false, message: "You can only delete subjects you coordinate" });
+    }
+
+    // Delete all students associated with this subject
+    const studentDeleteResult = await Student.deleteMany({ subject: id });
+    console.log(`Deleted ${studentDeleteResult.deletedCount} students`);
+    
+    // Delete the subject
+    await Subject.findByIdAndDelete(id);
+    console.log('Subject deleted successfully');
+    
+    res.json({ 
+      success: true, 
+      message: `Subject and ${studentDeleteResult.deletedCount} associated students deleted successfully` 
+    });
+  } catch (e) {
+    console.error("deleteSubject error:", e);
+    res.status(500).json({ success: false, message: "Server error: " + e.message });
   }
 };
 
@@ -98,19 +142,14 @@ export const getComponents = async (req, res) => {
   }
 };
 
-/**
- * Save components. Accepts either:
- * 1) { components: [ {name,maxMarks,enabled}, ... ] }  ← full replace (used by your UI)
- * 2) { name, maxMarks, enabled? }                      ← single upsert (optional)
- */
+/** 🔥 UPDATED: Save components with questions support */
 export const saveComponents = async (req, res) => {
   try {
     const { id } = req.params;
     const subject = await Subject.findOne({ _id: id, coordinator: req.user.id });
     if (!subject) return res.status(404).json({ success: false, message: "Subject not found or unauthorized" });
 
-    const { components, name, maxMarks, enabled } = req.body;
-
+    const { components, name, maxMarks, enabled, questions } = req.body;
     let next = [];
 
     if (Array.isArray(components)) {
@@ -118,19 +157,29 @@ export const saveComponents = async (req, res) => {
         name: String(c.name || "").trim(),
         maxMarks: Math.max(0, Number(c.maxMarks) || 0),
         enabled: !!c.enabled,
+        questions: Math.max(1, Math.min(10, Number(c.questions) || 3)), // 🔥 NEW: Store questions (1-10)
       }));
     } else if (name !== undefined && maxMarks !== undefined) {
       const nm = String(name || "").trim();
       const mm = Number(maxMarks);
+      const qq = Math.max(1, Math.min(10, Number(questions) || 3)); // 🔥 NEW: Handle questions
+      
       if (!nm || Number.isNaN(mm) || mm < 0) {
         return res.status(400).json({ success: false, message: "Invalid name/maxMarks" });
       }
+      
       const list = subject.components || [];
       const idx = list.findIndex((x) => x.name.toLowerCase() === nm.toLowerCase());
       if (idx >= 0) {
-        list[idx] = { ...list[idx], name: nm, maxMarks: mm, enabled: enabled ?? list[idx].enabled };
+        list[idx] = { 
+          ...list[idx], 
+          name: nm, 
+          maxMarks: mm, 
+          enabled: enabled ?? list[idx].enabled,
+          questions: qq // 🔥 NEW: Update questions
+        };
       } else {
-        list.push({ name: nm, maxMarks: mm, enabled: enabled ?? true });
+        list.push({ name: nm, maxMarks: mm, enabled: enabled ?? true, questions: qq });
       }
       next = list;
     } else {
