@@ -8,15 +8,16 @@ import CoordinatorLanding from "./pages/CoordinatorLanding";
 import FacultyLanding from "./pages/FacultyLanding";
 import SubjectDetail from "./components/SubjectDetail";
 import StudentReport from "./pages/StudentReport";
+import COMatrix from "./pages/COMatrix"; // 🔥 NEW: Import CO Matrix page
 
-// 🔥 FIXED: Added 'user' prop to AppLayout
+// FIXED: Added 'user' prop to AppLayout
 const AppLayout = ({ handleLogout, subjects, handleShowAddSubject, onRefreshSubjects, user }) => (
   <>
     <Sidebar 
       subjects={subjects} 
       onAddSubject={handleShowAddSubject} 
       onRefreshSubjects={onRefreshSubjects}
-      user={user} // 🔥 Now user is properly passed
+      user={user}
     />
     <main className="ml-64">
       <header className="bg-white shadow-sm border-b sticky top-0 z-40">
@@ -89,7 +90,7 @@ export default function App() {
     setSubjects([]);
   };
 
-  // 🔥 ENHANCED: Better refresh subjects function
+  // ENHANCED: Better refresh subjects function
   const refreshSubjects = async () => {
     if (isRefreshing) return;
     
@@ -107,7 +108,7 @@ export default function App() {
     }
   };
 
-  // 🔥 NEW: Force refresh all data (for after uploads)
+  // NEW: Force refresh all data (for after uploads)
   const forceRefreshAllData = async () => {
     console.log('🔄 Force refreshing all application data...');
     setIsRefreshing(true);
@@ -152,7 +153,7 @@ export default function App() {
     init();
   }, []);
 
-  // 🔥 ENHANCED: Load subjects with better error handling
+  // ENHANCED: Load subjects with better error handling
   const loadSubjectsFromBackend = async (token = null) => {
     try {
       const authToken = token || localStorage.getItem("authToken");
@@ -185,6 +186,9 @@ export default function App() {
           components: s.components || [],
           courseOutcomes: s.courseOutcomes || [],
           coordinator: s.coordinator || null,
+          coMatrix: s.coMatrix || [], // 🔥 NEW: Include CO Matrix data
+          instructor: s.instructor || "", // 🔥 NEW: Include instructor field
+          session: s.session || "", // 🔥 NEW: Include session field
         }));
         
         setSubjects(transformed);
@@ -249,6 +253,9 @@ export default function App() {
         components: saved.components || [],
         courseOutcomes: saved.courseOutcomes || [],
         coordinator: saved.coordinator || null,
+        coMatrix: saved.coMatrix || [], // 🔥 NEW: Include CO Matrix
+        instructor: saved.instructor || "",
+        session: saved.session || "",
       };
       setSubjects((prev) => [...prev, transformed]);
       setShowAddSubjectModal(false);
@@ -259,7 +266,7 @@ export default function App() {
     }
   };
 
-  // 🔥 ENHANCED: Update subject with better refresh
+  // ENHANCED: Update subject with better refresh
   const handleUpdateSubject = async (updated, index) => {
     console.log('📝 Updating subject at index:', index);
     const next = [...subjects];
@@ -325,7 +332,7 @@ export default function App() {
   // Main authenticated app
   return (
     <BrowserRouter>
-      {/* 🔥 NEW: Global refresh indicator */}
+      {/* NEW: Global refresh indicator */}
       {isRefreshing && (
         <div className="fixed top-4 right-4 z-[9999] bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg">
           <div className="flex items-center space-x-2">
@@ -395,6 +402,7 @@ export default function App() {
             </>
           }
         />
+        
         {/* Report page */}
         <Route
           path="/subject/:idx/report"
@@ -416,6 +424,27 @@ export default function App() {
           }
         />
 
+        {/* 🔥 NEW: CO Matrix page */}
+        <Route
+          path="/subject/:idx/co-matrix"
+          element={
+            <>
+              <Sidebar
+                subjects={subjects}
+                onAddSubject={() => setShowAddSubjectModal(true)}
+                onRemoveSubject={handleRemoveSubject}
+                user={user}
+                onRefreshSubjects={refreshSubjects}
+              />
+              <COMatrix 
+                subjects={subjects} 
+                user={user} 
+                onRefreshSubjects={refreshSubjects}
+              />
+            </>
+          }
+        />
+
         {/* Root route */}
         <Route
           path="/"
@@ -426,7 +455,7 @@ export default function App() {
                 subjects={subjects}
                 handleShowAddSubject={() => setShowAddSubjectModal(true)}
                 onRefreshSubjects={refreshSubjects}
-                user={user} // 🔥 FIXED: Now passing user prop
+                user={user}
               />
             ) : (
               <FacultyLayout handleLogout={handleLogout} />

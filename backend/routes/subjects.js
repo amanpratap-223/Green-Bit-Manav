@@ -1,4 +1,3 @@
-// backend/routes/subjects.js
 import express from "express";
 import { 
   createSubject, 
@@ -11,9 +10,14 @@ import {
   assignFacultyToSubject,
   getFacultyAssignments,
   removeFacultyAssignment,
-  getFacultyList
+  getFacultyList,
+  // 🔥 NEW: CO Matrix endpoints
+  getCourseOutcomes,
+  saveCourseOutcomes,
+  calculateCOMatrix,
+  validateMarksUploaded
 } from "../controllers/subjectController.js";
-import auth from "../middleware/auth.js"; // Default import
+import auth from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -47,5 +51,11 @@ router.delete("/:id/assignments/:assignmentId", auth, requireRole(["coordinator"
 
 // Faculty list
 router.get("/faculty-list", auth, getFacultyList);
+
+// 🔥 NEW: CO Matrix routes
+router.get("/:id/course-outcomes", auth, getCourseOutcomes);
+router.post("/:id/course-outcomes", auth, requireRole(["coordinator"]), saveCourseOutcomes);
+router.get("/:id/co-matrix/calculate", auth, calculateCOMatrix);
+router.get("/:id/co-matrix/validate-marks", auth, validateMarksUploaded);
 
 export default router;

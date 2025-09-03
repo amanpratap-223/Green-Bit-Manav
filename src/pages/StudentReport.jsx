@@ -4,7 +4,7 @@ import * as XLSX from "xlsx";
 
 const commons = ["MST", "EST", "Sessional", "Lab", "Project"];
 
-// 🔥 NEW: Helper function to safely render marks
+// Helper function to safely render marks
 const renderMarksValue = (marksData, componentName) => {
   if (!marksData || !marksData[componentName]) return "";
   
@@ -28,7 +28,7 @@ const renderMarksValue = (marksData, componentName) => {
   return markValue || "";
 };
 
-// 🔥 ENHANCED: Helper function to render detailed marks breakdown
+// Helper function to render detailed marks breakdown
 const renderDetailedMarks = (marksData, componentName) => {
   if (!marksData || !marksData[componentName]) return null;
   
@@ -81,7 +81,7 @@ export default function StudentReport({ subjects }) {
   const [showAddComp, setShowAddComp] = useState(false);
   const [compName, setCompName] = useState("");
   const [compMarks, setCompMarks] = useState("");
-  const [compQuestions, setCompQuestions] = useState("3"); // 🔥 NEW: Add questions field
+  const [compQuestions, setCompQuestions] = useState("3");
   const [newCO, setNewCO] = useState("");
   const [courseOutcomes, setCourseOutcomes] = useState(
     subject?.courseOutcomes || []
@@ -98,7 +98,7 @@ export default function StudentReport({ subjects }) {
 
   const token = useMemo(() => localStorage.getItem("authToken"), []);
 
-  // 🔥 UPDATED: Enhanced data loading with proper marks handling
+  // Enhanced data loading with proper marks handling
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -133,7 +133,7 @@ export default function StudentReport({ subjects }) {
           setComponents(subject.components);
         }
 
-        // 🔥 UPDATED: Enhanced students data loading
+        // Enhanced students data loading
         const st = await fetch(
           `http://localhost:5000/api/students/subject/${subject._id}`,
           { headers: { Authorization: `Bearer ${token}` } }
@@ -150,10 +150,10 @@ export default function StudentReport({ subjects }) {
               Name: s.name,
               Subgroup: s.subgroup || "",
               Branch: s.branch || "",
-              _marksData: s.marks || {}, // 🔥 NEW: Store raw marks data
+              _marksData: s.marks || {},
             };
             
-            // 🔥 UPDATED: Process marks with new helper function
+            // Process marks with new helper function
             currentEnabled.forEach((name) => {
               base[name] = renderMarksValue(s.marks, name);
             });
@@ -179,19 +179,56 @@ export default function StudentReport({ subjects }) {
 
   const rows = useMemo(() => studentsData || [], [studentsData]);
   
-  // 🔥 FIXED: Enhanced subgroup deduplication
+  // FIXED: Enhanced subgroup deduplication
   const subgroupOptions = useMemo(() => {
     const uniqueSubgroups = new Set();
     rows.forEach((r) => {
       const subgroup = String(r.Subgroup || "")
         .trim()
-        .toLowerCase(); // Handle case sensitivity
+        .toLowerCase();
       if (subgroup) {
-        uniqueSubgroups.add(r.Subgroup.trim()); // Store original case
+        uniqueSubgroups.add(r.Subgroup.trim());
       }
     });
-    return Array.from(uniqueSubgroups).sort(); // Sort alphabetically
+    return Array.from(uniqueSubgroups).sort();
   }, [rows]);
+
+  // 🔥 NEW: CO Matrix validation and navigation
+  const handleViewCOMatrix = async () => {
+    try {
+      // First, validate if marks have been uploaded by faculty
+      const validationResponse = await fetch(
+        `http://localhost:5000/api/subjects/${subject._id}/co-matrix/validate-marks`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      const validation = await validationResponse.json();
+      
+      if (!validation.success) {
+        alert("Error checking marks validation: " + validation.message);
+        return;
+      }
+      
+      if (!validation.data.allMarksUploaded) {
+        const facultyWithoutMarks = validation.data.facultyWithoutMarks;
+        let message = "CO Matrix cannot be generated. The following faculty have not uploaded marks:\n\n";
+        
+        facultyWithoutMarks.forEach(item => {
+          message += `• ${item.faculty.name} (Subgroup: ${item.subgroup}, Students: ${item.studentCount})\n`;
+        });
+        
+        message += "\nPlease ensure all faculty have uploaded marks before viewing the CO Matrix.";
+        alert(message);
+        return;
+      }
+      
+      // If all marks are uploaded, navigate to CO Matrix page
+      navigate(`/subject/${idx}/co-matrix`);
+    } catch (error) {
+      console.error("Error validating marks:", error);
+      alert("Error checking marks validation. Please try again.");
+    }
+  };
 
   // Faculty assignment
   const handleAddAssignment = async () => {
@@ -226,7 +263,7 @@ export default function StudentReport({ subjects }) {
     }
   };
 
-  // 🔥 UPDATED: Enhanced component saving with questions support
+  // Enhanced component saving with questions support
   const handleSaveComponent = async () => {
     const name = compName.trim();
     const maxMarks = Number(compMarks);
@@ -247,7 +284,7 @@ export default function StudentReport({ subjects }) {
       ...(components || []).filter(
         (c) => c.name.toLowerCase() !== name.toLowerCase()
       ),
-      { name, maxMarks, enabled: true, questions }, // 🔥 NEW: Include questions
+      { name, maxMarks, enabled: true, questions },
     ];
 
     try {
@@ -307,20 +344,20 @@ export default function StudentReport({ subjects }) {
     }
   };
 
-  // 🔥 FIXED: Template download with only headers (no sample data)
+  // FIXED: Template download with only headers (no sample data)
   const handleDownloadTemplate = () => {
     const header = {
-      "Roll No.": "", // Empty value, just the header
-      Name: "",       // Empty value, just the header
-      Subgroup: "",   // Empty value, just the header
-      Branch: "",     // Empty value, just the header
+      "Roll No.": "",
+      Name: "",
+      Subgroup: "",
+      Branch: "",
     };
     
-    // 🔥 Generate sub-question columns for enabled components (headers only)
+    // Generate sub-question columns for enabled components (headers only)
     enabledComponents.forEach((c) => {
       const questionCount = c.questions || 3;
       for (let i = 1; i <= questionCount; i++) {
-        header[`${c.name}(Q${i})`] = ""; // Empty value, just the header
+        header[`${c.name}(Q${i})`] = "";
       }
     });
     
@@ -363,14 +400,14 @@ export default function StudentReport({ subjects }) {
         if (result.success) {
           alert(`Successfully uploaded ${result.data.studentsUploaded} students!`);
           
-          // 🔥 UPDATED: Process uploaded data with new marks structure
+          // Process uploaded data with new marks structure
           const rows = jsonData.map((r) => {
             const base = {
               "Roll No.": r["Roll No."] || r["ROLL NO."] || r.rollNo || "",
               Name: r["Name"] || r.name || "",
               Subgroup: r["Subgroup"] || r.subgroup || "",
               Branch: r["Branch"] || r.branch || "",
-              _marksData: {}, // Store raw marks data
+              _marksData: {},
             };
             
             enabledComponents.forEach((c) => {
@@ -453,12 +490,24 @@ export default function StudentReport({ subjects }) {
             </h1>
             <p className="text-gray-600">Semester: {subject.semester}</p>
           </div>
-          <button
-            onClick={() => navigate(`/subject/${idx}`)}
-            className="bg-gray-200 text-gray-800 px-4 py-2 rounded hover:bg-gray-300"
-          >
-            Back to Subject
-          </button>
+          <div className="flex gap-2">
+            {/* 🔥 NEW: CO Matrix Button */}
+            <button
+              onClick={handleViewCOMatrix}
+              className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              View CO Matrix
+            </button>
+            <button
+              onClick={() => navigate(`/subject/${idx}`)}
+              className="bg-gray-200 text-gray-800 px-4 py-2 rounded hover:bg-gray-300"
+            >
+              Back to Subject
+            </button>
+          </div>
         </div>
 
         {/* KPIs */}
@@ -524,7 +573,6 @@ export default function StudentReport({ subjects }) {
                     className="w-full border rounded px-3 py-2"
                   >
                     <option value="">-- Select --</option>
-                    {/* 🔥 FIXED: Using enhanced subgroupOptions */}
                     {subgroupOptions.map((sg) => (
                       <option key={sg} value={sg}>
                         {sg}
@@ -574,7 +622,7 @@ export default function StudentReport({ subjects }) {
             </div>
           </div>
 
-          {/* 🔥 ENHANCED: Enter Components with Questions Field */}
+          {/* ENHANCED: Enter Components with Questions Field */}
           <div className="p-5 bg-white border rounded shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-gray-800">Enter Components</h3>
@@ -616,7 +664,7 @@ export default function StudentReport({ subjects }) {
                         onChange={(e) => setCompMarks(e.target.value)}
                       />
                     </div>
-                    {/* 🔥 NEW: Questions field */}
+                    {/* NEW: Questions field */}
                     <div>
                       <label className="text-sm text-gray-700 mb-1 block">Questions</label>
                       <input
@@ -745,7 +793,7 @@ export default function StudentReport({ subjects }) {
           </div>
         </div>
 
-        {/* 🔥 UPDATED: Enhanced table with proper marks rendering */}
+        {/* Enhanced table with proper marks rendering */}
         <div className="border border-blue-200 rounded-b-lg">
           <div className="p-4 text-sm text-gray-600">
             Upload your Excel with columns:
@@ -786,7 +834,7 @@ export default function StudentReport({ subjects }) {
                     <td className="p-2 border">{r["Branch"] || ""}</td>
                     {visibleComponents.map((c) => (
                       <td key={c.name} className="p-2 border">
-                        {/* 🔥 FIXED: Use helper function to render marks safely */}
+                        {/* FIXED: Use helper function to render marks safely */}
                         {r._marksData ? 
                           renderDetailedMarks(r._marksData, c.name) : 
                           (r[c.name] ?? "")
